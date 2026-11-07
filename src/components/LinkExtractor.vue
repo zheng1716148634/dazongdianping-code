@@ -1,16 +1,18 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { CopyDocument, Link, Picture, Setting } from '@element-plus/icons-vue'
+import { ChatDotRound, CopyDocument, Link, Picture, Setting } from '@element-plus/icons-vue'
 import { extractLinks } from '../utils/extractLinks'
 import { extractFeedId, isDianpingUrl, normalizeNoteUrl, parseFeedHtml } from '../utils/dianping'
 import ImageZoomPreview from './ImageZoomPreview.vue'
+import NoteAiChat from './NoteAiChat.vue'
 import {
   cachedNotes,
   clearAllNotes,
   deleteNote,
   initMaterials,
   removeImageFromNote,
+  updateNoteText,
   upsertNote,
 } from '../stores/materials'
 
@@ -275,6 +277,43 @@ async function confirmDeleteNote(note) {
 const previewNote = ref(null)
 const previewIndex = ref(-1)
 
+// ---------- AI 笔记改写 ----------
+
+const aiChatVisible = ref(false)
+const aiChatNote = ref(null)
+
+function openAiChat(note) {
+  if (!note.content?.trim() && !note.title?.trim()) {
+    ElMessage.warning('这条笔记没有标题和文案，没法改写')
+    return
+  }
+  aiChatNote.value = note
+  aiChatVisible.value = true
+}
+
+// AI 对话里点了「应用到笔记」：确认后用改写结果替换标题和文案
+async function applyAiContent(payload) {
+  const note = aiChatNote.value
+  if (!note || !payload?.content?.trim()) return
+  const replaceTitle = Boolean(payload.title && payload.title !== note.title)
+  try {
+    await ElMessageBox.confirm(
+      replaceTitle
+        ? '将用 AI 改写后的标题和文案，替换这条笔记现有的标题与内容（图片不受影响）。确定继续吗？'
+        : '将用 AI 改写后的文案，替换这条笔记现有的内容（标题和图片不受影响）。确定继续吗？',
+      '应用到笔记',
+      { confirmButtonText: '替换', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch {
+    return
+  }
+  await updateNoteText(note.id, {
+    title: replaceTitle ? payload.title : undefined,
+    content: payload.content,
+  })
+  ElMessage.success(replaceTitle ? '已用改写后的标题和文案更新这条笔记' : '已用改写后的文案更新这条笔记')
+}
+
 function openPreview(note, index) {
   previewNote.value = note
   previewIndex.value = index
@@ -477,7 +516,13 @@ function copyOne(item) {
                 </div>
 
                 <div v-if="note.content" class="info-block info-block-grow">
-                  <span class="info-label">笔记内容</span>
+                  <div class="info-label-row">
+                    <span class="info-label">笔记内容</span>
+                    <button class="ai-rewrite-btn" type="button" title="用 AI 改写这条笔记文案" @click="openAiChat(note)">
+                      <el-icon><ChatDotRound /></el-icon>
+                      AI 改写
+                    </button>
+                  </div>
                   <p
                     class="info-content copyable"
                     title="点击复制全部文案"
@@ -525,5 +570,7 @@ function copyOne(item) {
       :images="previewNote?.images || []"
       :download-name="previewNote ? `点评素材-${previewNote.id}` : '点评素材'"
     />
+
+    <NoteAiChat v-model="aiChatVisible" :note="aiChatNote" @apply="applyAiContent" />
   </section>
 </template>

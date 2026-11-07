@@ -57,6 +57,15 @@ export async function deleteNote(noteId) {
   await removeNote(noteId)
 }
 
+// 只改标题/文案（AI 改写回填用），保持素材库原排序
+export async function updateNoteText(noteId, patch) {
+  const note = cachedNotes.value.find((n) => n.id === noteId)
+  if (!note) return
+  if (typeof patch?.title === 'string' && patch.title.trim()) note.title = patch.title.trim()
+  if (typeof patch?.content === 'string' && patch.content.trim()) note.content = patch.content.trim()
+  await saveNote(plain(note))
+}
+
 export async function removeImageFromNote(noteId, imageUrl) {
   const note = cachedNotes.value.find((n) => n.id === noteId)
   if (!note) return

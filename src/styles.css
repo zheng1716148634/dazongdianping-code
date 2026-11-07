@@ -1393,7 +1393,6 @@ h1 {
 }
 
 .hint {
-  margin: 0 0 14px;
   color: var(--muted);
   font-size: 13px;
   line-height: 1.65;
@@ -1415,9 +1414,31 @@ h1 {
 }
 
 /* 一键获取素材按钮：放在链接下方，占满侧栏宽度 */
+/* 托盘头部：标题在左、「一键获取素材」悬浮在右上，托盘内部滚动时整行钉在顶部 */
+.tray-head {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  /* 抵消托盘内边距，钉住时正好贴住托盘顶部 */
+  padding: 20px 18px 10px;
+  background:
+    linear-gradient(180deg, rgba(var(--sheet-rgb), 0.55), rgba(var(--blotter-rgb), 0.2)),
+    var(--paper-2);
+  border-radius: 18px 4px 0 0;
+}
+
+.tray-head h2 {
+  margin: 0;
+}
+
 .fetch-btn {
-  width: 100%;
-  margin-top: 14px;
+  flex: none;
+  margin-top: 0;
+  white-space: nowrap;
 }
 
 /* ---------- 链接目录 ---------- */

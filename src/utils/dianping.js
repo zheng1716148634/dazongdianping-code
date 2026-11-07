@@ -8,9 +8,22 @@ const IMAGE_URL_RE = /(?:https?:)?\/\/[^\s"'<>()\\]+?\.(?:jpg|jpeg|png|webp)(?:\
 const JUNK_IMAGE_RE = /avatar|logo|icon|emoji|\/star|badge|\.svg|default_|\/adcreative|\/weather|blank|grey/i
 const AVATAR_SIZE_RE = /(?:^|[^\d])(?:80|100|120|132|180)x(?:80|100|120|132|180)(?:[^\d]|$)/
 
+// 点评官方短链（如 http://dpurl.cn/Vl0OUcjz），服务端 302 展开后才是真实笔记页
+const SHORT_HOST_RE = /(^|\.)dpurl\.cn$/i
+
+export function isDpShortUrl(url) {
+  try {
+    return SHORT_HOST_RE.test(new URL(url).host)
+  } catch {
+    return false
+  }
+}
+
 export function isDianpingUrl(url) {
   try {
-    return /(^|\.)dianping\.com$/i.test(new URL(url).host)
+    const host = new URL(url).host
+    // dpurl.cn 是点评官方短链，和 dianping.com 一样直接放行
+    return /(^|\.)dianping\.com$/i.test(host) || SHORT_HOST_RE.test(host)
   } catch {
     return false
   }

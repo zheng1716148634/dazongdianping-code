@@ -3,7 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ChatDotRound, CopyDocument, Link, Picture, Setting } from '@element-plus/icons-vue'
 import { extractLinks } from '../utils/extractLinks'
-import { extractFeedId, isDianpingUrl, normalizeNoteUrl, parseFeedHtml } from '../utils/dianping'
+import { extractFeedId, isDianpingUrl, isDpShortUrl, normalizeNoteUrl, parseFeedHtml } from '../utils/dianping'
 import ImageZoomPreview from './ImageZoomPreview.vue'
 import NoteAiChat from './NoteAiChat.vue'
 import {
@@ -170,10 +170,15 @@ async function fetchMaterial(item) {
     }
 
     const { kept, dropped } = await keepFoodImages(await downloadImages(parsed.images))
-    const id = extractFeedId(item.url) || item.url
+    // 短链（dpurl.cn）抓取时会带回展开后的真实地址，存库用真实地址，
+    // 这样笔记 id 稳定，后续「重新获取」也不依赖短链是否仍然有效
+    const finalUrl = typeof data.finalUrl === 'string' ? data.finalUrl : ''
+    const resolvedUrl =
+      finalUrl && isDianpingUrl(finalUrl) && !isDpShortUrl(finalUrl) ? finalUrl : item.url
+    const id = extractFeedId(resolvedUrl) || extractFeedId(item.url) || item.url
     const note = {
       id,
-      url: item.url,
+      url: resolvedUrl,
       title: parsed.title || `笔记 ${id}`,
       content: parsed.content,
       shop: parsed.shop,
@@ -193,7 +198,7 @@ async function fetchMaterial(item) {
 async function fetchLink() {
   if (!link.value || fetching.value) return
   if (!isDianpingUrl(link.value.url)) {
-    ElMessage.warning('目前只支持大众点评笔记链接（m.dianping.com）')
+    ElMessage.warning('目前只支持大众点评笔记链接（m.dianping.com 或 dpurl.cn 短链）')
     return
   }
   await fetchMaterial(link.value)
@@ -367,9 +372,18 @@ function copyOne(item) {
 
     <div class="layout layout-links">
       <aside class="tray">
-        <h2>素材提取</h2>
-        <p class="hint">粘贴带点评笔记的文案，自动识别出第一条链接，一次处理一条。</p>
-
+        <div class="tray-head">
+          <h2>素材提取</h2>
+          <el-button
+            type="primary"
+            class="fetch-btn"
+            :disabled="!link || fetching"
+            :loading="fetching"
+            @click="fetchLink"
+          >
+            {{ fetching ? '获取中…' : '一键获取素材' }}
+          </el-button>
+        </div>
         <div class="manuscript manuscript-compact">
           <label class="manuscript-label" for="copy-input">原文案</label>
           <textarea
@@ -406,18 +420,6 @@ function copyOne(item) {
             <strong>还没有识别到链接</strong>
           </div>
         </div>
-
-        <el-button
-          type="primary"
-          class="fetch-btn"
-          :disabled="!link || fetching"
-          :loading="fetching"
-          @click="fetchLink"
-        >
-          {{ fetching ? '正在获取素材…' : '一键获取素材' }}
-        </el-button>
-
-       
       </aside>
 
       <div class="stage-wrap">

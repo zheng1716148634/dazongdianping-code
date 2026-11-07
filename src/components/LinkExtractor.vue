@@ -57,7 +57,7 @@ const fetchStatus = ref({}) // url -> { state: 'loading' | 'error', message }
 const fetching = computed(() => Boolean(link.value && fetchStatus.value[link.value.url]?.state === 'loading'))
 
 // 只要美食大图：任一边不大于该值的（头像、图标、码）直接丢弃，>500 才列入清单
-const MIN_FOOD_SIDE = 500
+const MIN_FOOD_SIDE = 1000
 
 // 文本域随内容自动增高，内部不出现滚动条
 watch(

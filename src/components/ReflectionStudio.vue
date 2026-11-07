@@ -241,10 +241,6 @@ async function onPickFromLibrary(items) {
           </el-button>
           <el-button :disabled="!sourceImage" @click="resetAll">清空</el-button>
         </div>
-
-        <div class="note">
-          导出与原图完全同尺寸，宽高都不变。PNG 保留透明通道，JPG 会把透明区压到白底；{{ opacity }}% 越低越看不见，但确实写进了像素。
-        </div>
       </aside>
     </section>
   </section>

@@ -404,7 +404,6 @@ function copyOne(item) {
           <el-icon class="empty-icon"><Link /></el-icon>
           <div>
             <strong>还没有识别到链接</strong>
-            <p>文案里包含 http 或 www 开头的地址就会显示在这里。</p>
           </div>
         </div>
 
@@ -418,9 +417,7 @@ function copyOne(item) {
           {{ fetching ? '正在获取素材…' : '一键获取素材' }}
         </el-button>
 
-        <div class="note">
-          点评笔记需要登录态：点「填写 Cookie」按步骤复制即可。抓取依赖本地代理，请通过 npm run dev 访问本页。
-        </div>
+       
       </aside>
 
       <div class="stage-wrap">
@@ -441,7 +438,7 @@ function copyOne(item) {
             </div>
           </div>
           <p class="stage-hint">
-            {{ link ? '已识别 1 条点评笔记链接' : '左侧粘贴点评笔记链接后，可在这里抓取图文' }}；只保留边长大于 500px 的图片，悬停可单张移除，点击可放大预览。
+            {{ link ? '已识别 1 条点评笔记链接' : '左侧粘贴点评笔记链接后，可在这里抓取图文' }}
           </p>
 
           <div v-if="cachedNotes.length" class="material-cards">

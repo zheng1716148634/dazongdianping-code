@@ -651,9 +651,7 @@ async function onPickFromLibrary(items) {
           <el-button :disabled="!materials.length && !pairs.length" @click="resetAll">清空</el-button>
         </div>
 
-        <div class="note">
-          图片默认铺满格子并居中，放大后可拖动改构图，双击恢复。批量导出会逐张下载，浏览器如弹窗询问「是否允许多文件下载」请选择允许。
-        </div>
+      
       </aside>
     </section>
   </section>

@@ -385,8 +385,8 @@ h1 {
 }
 
 .page-links .manuscript-input {
-  min-height: 64px;
-  max-height: 108px;
+  min-height: 200px;
+  max-height: 320px;
   font-size: 13.5px;
   line-height: 26px;
   background-image: repeating-linear-gradient(180deg, transparent 0 27px, var(--line) 27px 28px);
@@ -2223,7 +2223,7 @@ h1 {
 
   .manuscript-input {
     flex: none;
-    min-height: 250px;
+    min-height: 300px;
   }
 
   /* 链接提取页：窄屏下保持紧凑稿纸，素材舞台自然延伸 */
@@ -2233,7 +2233,7 @@ h1 {
   }
 
   .page-links .manuscript-input {
-    max-height: 220px;
+    max-height: 320px;
   }
 
   .page-links .materials-stage {

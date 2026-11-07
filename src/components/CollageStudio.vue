@@ -648,10 +648,6 @@ async function onPickFromLibrary(items) {
         <div class="actions">
           <el-button :disabled="!materials.length && !hasContent" @click="resetAll">清空</el-button>
         </div>
-
-        <div class="note">
-          切换模板时图片按格序保留，不会丢失。格内拖动可平移画面，滚轮或滑杆缩放，双击复位；导出与预览一致，间距处为白底。
-        </div>
       </aside>
     </section>
   </section>

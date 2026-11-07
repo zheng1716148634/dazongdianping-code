@@ -375,7 +375,6 @@ function formatStateClass(state) {
         <span class="note-ai-context-hint">AI 会同时改写标题和正文</span>
       </div>
       <p class="note-ai-context-title">{{ props.note?.title || '（无标题）' }}</p>
-      <p class="note-ai-context-content">{{ currentContent || '（无内容）' }}</p>
     </div>
 
     <div ref="chatBodyRef" class="note-ai-body">

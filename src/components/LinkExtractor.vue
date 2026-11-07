@@ -363,7 +363,7 @@ function copyOne(item) {
   <section class="page-links">
     <header class="page-header">
       <div>
-        <h1>素材提取</h1>
+        <h1>AI提取素材</h1>
         <p class="lede">
           粘贴文案自动识别出点评笔记链接，一键抓取图文素材、只留美食大图；右侧素材库铺满展示，点击可放大预览，也能带到「美食AI / 拼图 / 双拼 / 倒影」页面使用。
         </p>
@@ -373,7 +373,7 @@ function copyOne(item) {
     <div class="layout layout-links">
       <aside class="tray">
         <div class="tray-head">
-          <h2>素材提取</h2>
+          <h2>AI提取素材</h2>
           <el-button
             type="primary"
             class="fetch-btn"
@@ -434,13 +434,13 @@ function copyOne(item) {
                 <el-icon class="btn-icon"><Setting /></el-icon>
                 {{ hasLogin ? '已登录' : '填写 Cookie' }}
               </el-button>
-              <el-button v-if="cachedNotes.length" size="small" @click="confirmClearAll">
+              <el-button v-if="cachedNotes.length" type="danger" size="small" @click="confirmClearAll">
                 清空全部内容
               </el-button>
             </div>
           </div>
           <p class="stage-hint">
-            {{ link ? '已识别 1 条点评笔记链接' : '左侧粘贴点评笔记链接后，可在这里抓取图文' }}
+            <!-- {{ link ? '已识别 1 条点评笔记链接' : '左侧粘贴点评笔记链接后，可在这里抓取图文' }} -->
           </p>
 
           <div v-if="cachedNotes.length" class="material-cards">
@@ -499,9 +499,9 @@ function copyOne(item) {
                 </div>
 
                 <div class="material-actions">
-                  <div class="material-action-btns">
+                  <!-- <div class="material-action-btns">
                     <el-button size="small" type="danger" plain @click="confirmDeleteNote(note)">删除</el-button>
-                  </div>
+                  </div> -->
                   <span class="material-time">{{ formatTime(note.fetchedAt) }}</span>
                 </div>
 

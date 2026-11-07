@@ -11,7 +11,7 @@ import { busy, pendingJobs } from './stores/heroHistory'
 import { THEMES, savedTheme, setTheme } from './utils/theme'
 
 const PAGES = [
-  { key: 'links', title: '素材提取', component: LinkExtractor, hash: '#/links' },
+  { key: 'links', title: 'AI提取素材', component: LinkExtractor, hash: '#/links' },
   { key: 'hero', title: '美食AI', component: HeroImageStudio, hash: '#/hero' },
   { key: 'collage', title: '单图拼接', component: CollageStudio, hash: '#/collage' },
   { key: 'pair', title: '批量拼接', component: PairStudio, hash: '#/pair' },
@@ -86,7 +86,7 @@ onMounted(() => {
         </button>
         <el-popover placement="bottom-end" :width="248" trigger="click">
           <template #reference>
-            <el-button size="small" title="切换四季主题">
+            <el-button size="small" type="primary" title="切换四季主题">
               <el-icon class="btn-icon"><Brush /></el-icon>
               主题
             </el-button>

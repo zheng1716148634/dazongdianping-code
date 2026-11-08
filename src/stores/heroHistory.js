@@ -204,15 +204,18 @@ export async function runGeneration(options) {
     for (let index = 0; index < entries.length; index += 1) {
       const material = await materialize(entries[index])
       if (!material.blob && !material.remoteUrl) continue
+      // 输出统一裁切缩放为固定的 1080 × 1440（3:4），与接口返回尺寸无关
+      const cropped = await toOutputSize(material.blob)
       created.push(
         plain({
           id: newId('img'),
           batchId,
-          ...material,
+          blob: cropped?.blob || material.blob,
+          remoteUrl: material.remoteUrl,
           refBlob,
           prompt,
           promptName,
-          size,
+          size: cropped ? `${cropped.width}x${cropped.height}` : size,
           quality,
           model: modelName,
           referenceName,
@@ -263,18 +266,63 @@ async function materialize(entry) {
   }
 }
 
-// 参考图缩略图：让每条记录能看出「是哪张原图生成的」，压缩到 200px 内
+// 输出固定尺寸：按 3:4 居中裁切后缩放，最终图严格为 1080 × 1440
+const OUTPUT_WIDTH = 1080
+const OUTPUT_HEIGHT = 1440
+
+async function toOutputSize(blob) {
+  if (!blob) return null
+  const url = URL.createObjectURL(blob)
+  try {
+    const image = await loadImage(url)
+    const width = image.naturalWidth
+    const height = image.naturalHeight
+    if (!width || !height) return null
+
+    const target = OUTPUT_WIDTH / OUTPUT_HEIGHT
+    let cropWidth = width
+    let cropHeight = height
+    if (width / height > target) cropWidth = Math.round(height * target)
+    else cropHeight = Math.round(width / target)
+
+    const canvas = document.createElement('canvas')
+    canvas.width = OUTPUT_WIDTH
+    canvas.height = OUTPUT_HEIGHT
+    canvas
+      .getContext('2d')
+      .drawImage(
+        image,
+        Math.round((width - cropWidth) / 2),
+        Math.round((height - cropHeight) / 2),
+        cropWidth,
+        cropHeight,
+        0,
+        0,
+        OUTPUT_WIDTH,
+        OUTPUT_HEIGHT,
+      )
+    const output = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
+    if (!output) return null
+    return { blob: output, width: OUTPUT_WIDTH, height: OUTPUT_HEIGHT }
+  } catch {
+    return null
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
+// 参考图预览图：记录里保留 1024px 内的版本，既做卡片上的原图角标，也用于原图/生成结果对比预览
 async function makeThumb(file) {
   const url = URL.createObjectURL(file)
   try {
     const image = await loadImage(url)
-    const maxSide = 200
+    const maxSide = 1024
     const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight))
     const canvas = document.createElement('canvas')
     canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
     canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
     canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height)
-    return await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.72))
+    return await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.82))
   } catch {
     return null
   } finally {

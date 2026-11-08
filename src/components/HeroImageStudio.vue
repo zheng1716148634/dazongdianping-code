@@ -33,11 +33,8 @@ const DEFAULT_PROMPT = [
   '除食物和这一个人物外不要添加任何文字、水印、贴纸、logo，也不要有第二个人物。',
 ].join('')
 
-// 尺寸不再手动选择：按参考图长宽比自动落到接口支持的三个档位里最接近的一档
-const SIZE_LANDSCAPE = '1536x1024'
-const SIZE_SQUARE = '1024x1024'
+// 输出固定 1080 × 1440（3:4）：接口按官方 2:3 竖图请求，落库前在 heroHistory 里裁切缩放成目标尺寸
 const SIZE_PORTRAIT = '1024x1536'
-const RATIO_THRESHOLD = 1.15
 
 const QUALITIES = [
   { value: 'auto', label: '自动' },
@@ -72,16 +69,9 @@ const promptDraft = ref(initialPrompt?.text || '')
 const activeConfig = computed(
   () => configs.value.find((item) => item.id === activeId.value) || configs.value[0] || null,
 )
-// 生成尺寸跟随参考图：无参考图时默认方图，有参考图按长宽比选最近档位
-const size = computed(() => {
-  const ref_ = reference.value
-  if (!ref_?.width || !ref_?.height) return SIZE_SQUARE
-  const ratio = ref_.width / ref_.height
-  if (ratio >= RATIO_THRESHOLD) return SIZE_LANDSCAPE
-  if (ratio <= 1 / RATIO_THRESHOLD) return SIZE_PORTRAIT
-  return SIZE_SQUARE
-})
-const sizeLabel = computed(() => size.value.replace('x', ' × '))
+// 请求尺寸固定为接口支持的竖图档位，最终输出统一裁切缩放成 1080 × 1440
+const size = SIZE_PORTRAIT
+const sizeLabel = '1080 × 1440（3:4）'
 const canGenerate = computed(
   () =>
     !!reference.value &&
@@ -95,19 +85,33 @@ const previewingRecord = computed(
   () => previewTarget.value === 'record' && !!activeRecord.value,
 )
 
-// 生成记录的大图查看器：可从任意记录进入，并支持左右切换翻看全部记录
-const viewerVisible = ref(false)
-const viewerStartId = ref('')
+// 生成记录对比预览：左边原图、右边生成结果，可左右切换翻看全部有效记录
+const compareVisible = ref(false)
+const compareId = ref('')
 const viewableRecords = computed(() => records.value.filter((item) => item.src))
-const viewerIndex = computed(() => {
-  const index = viewableRecords.value.findIndex((item) => item.id === viewerStartId.value)
-  return index >= 0 ? index : 0
-})
+const compareRecord = computed(
+  () =>
+    viewableRecords.value.find((item) => item.id === compareId.value) ||
+    viewableRecords.value[0] ||
+    null,
+)
+const compareIndex = computed(() =>
+  viewableRecords.value.findIndex((item) => item.id === compareRecord.value?.id),
+)
+const hasPrev = computed(() => compareIndex.value > 0)
+const hasNext = computed(
+  () => compareIndex.value >= 0 && compareIndex.value < viewableRecords.value.length - 1,
+)
 
-function openViewer(item) {
+function openCompare(item) {
   if (!item.src) return
-  viewerStartId.value = item.id
-  viewerVisible.value = true
+  compareId.value = item.id
+  compareVisible.value = true
+}
+
+function compareStep(step) {
+  const target = viewableRecords.value[compareIndex.value + step]
+  if (target) compareId.value = target.id
 }
 
 onMounted(() => {
@@ -491,7 +495,7 @@ function generate() {
     fileName: reference.value.name,
     prompt: promptText,
     promptName: promptName.value.trim(),
-    size: size.value,
+    size,
     quality: quality.value,
     config: {
       baseUrl: item.baseUrl,
@@ -713,8 +717,8 @@ function loadImage(src) {
                 <span
                   v-if="item.src"
                   class="history-zoom"
-                  title="预览大图"
-                  @click.stop="openViewer(item)"
+                  title="原图与生成结果对比预览"
+                  @click.stop="openCompare(item)"
                 >
                   <svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true">
                     <circle cx="10.5" cy="10.5" r="6.5" fill="none" stroke="currentColor" stroke-width="2.2" />
@@ -727,7 +731,7 @@ function loadImage(src) {
                 <span class="history-meta">{{ item.model }} · {{ item.size }}</span>
               </div>
               <div class="history-card-actions">
-                <button type="button" class="pair-mini" :disabled="!item.src" @click="openViewer(item)">
+                <button type="button" class="pair-mini" :disabled="!item.src" @click="openCompare(item)">
                   预览
                 </button>
                 <button type="button" class="pair-mini" @click="downloadItem(item)">下载</button>
@@ -815,7 +819,7 @@ function loadImage(src) {
 
         <div class="field field-split">
           <div>
-            <div class="field-label"><span>尺寸</span><span>跟随参考图</span></div>
+            <div class="field-label"><span>尺寸</span><span>3:4 竖图</span></div>
             <div class="size-follow">{{ sizeLabel }}</div>
           </div>
           <div>
@@ -900,13 +904,45 @@ function loadImage(src) {
       </template>
     </el-dialog>
 
-    <!-- 生成记录全屏大图查看器：可左右切换翻看所有有效记录 -->
-    <el-image-viewer
-      v-if="viewerVisible && viewableRecords.length"
-      :url-list="viewableRecords.map((item) => item.src)"
-      :initial-index="viewerIndex"
-      hide-on-click-modal
-      @close="viewerVisible = false"
-    />
+    <!-- 生成记录对比预览：左原图 / 右生成结果，可左右切换翻看所有有效记录 -->
+    <el-dialog
+      v-model="compareVisible"
+      title="预览对比"
+      width="min(1180px, 96vw)"
+      append-to-body
+      destroy-on-close
+      class="hero-compare-dialog"
+    >
+      <div v-if="compareRecord" class="compare-body">
+        <figure class="compare-pane">
+          <div class="compare-pane-frame">
+            <img v-if="compareRecord.refSrc" :src="compareRecord.refSrc" alt="原图" />
+            <span v-else class="compare-missing">这条记录没有保存原图</span>
+          </div>
+          <figcaption>
+            <span>原图{{ compareRecord.referenceName ? ` · ${compareRecord.referenceName}` : '' }}</span>
+          </figcaption>
+        </figure>
+
+        <figure class="compare-pane">
+          <div class="compare-pane-frame">
+            <img v-if="compareRecord.src" :src="compareRecord.src" alt="生成结果" />
+            <span v-else class="compare-missing">这张图已失效</span>
+          </div>
+          <figcaption>
+            <span>生成结果 · {{ compareRecord.size }}</span>
+            <span>{{ compareRecord.model }} · {{ formatTime(compareRecord.createdAt) }}</span>
+          </figcaption>
+        </figure>
+      </div>
+
+      <template #footer>
+        <div class="compare-footer">
+          <el-button size="small" :disabled="!hasPrev" @click="compareStep(-1)">上一张</el-button>
+          <span class="compare-count">{{ compareIndex + 1 }} / {{ viewableRecords.length }}</span>
+          <el-button size="small" :disabled="!hasNext" @click="compareStep(1)">下一张</el-button>
+        </div>
+      </template>
+    </el-dialog>
   </section>
 </template>

@@ -1413,7 +1413,7 @@ h1 {
   color: var(--seal);
 }
 
-/* 美食AI：尺寸跟随参考图，只读展示，不再提供选择 */
+/* 美食AI：尺寸固定 3:4，只读展示，不再提供选择 */
 .size-follow {
   display: flex;
   align-items: center;
@@ -1424,6 +1424,84 @@ h1 {
   background: rgba(var(--seal-rgb), 0.06);
   border: 1px dashed rgba(var(--seal-rgb), 0.25);
   border-radius: 6px;
+}
+
+/* 美食AI：生成记录的原图 / 生成结果对比预览 */
+.compare-body {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.compare-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  margin: 0;
+}
+
+.compare-pane-frame {
+  display: grid;
+  place-items: center;
+  height: min(62vh, 680px);
+  padding: 10px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 4px 14px 6px 12px;
+  background: rgba(var(--sheet-rgb), 0.55);
+  box-shadow: inset 0 20px 40px rgba(var(--line-rgb), 0.05);
+}
+
+.compare-pane-frame img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 3px 10px 4px 8px;
+  box-shadow: var(--shadow);
+}
+
+.compare-missing {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.compare-pane figcaption {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.compare-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+}
+
+.compare-count {
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 760px) {
+  .compare-body {
+    grid-template-columns: 1fr;
+  }
+
+  .compare-pane-frame {
+    height: auto;
+    min-height: 0;
+  }
+
+  .compare-pane-frame img {
+    max-height: 38vh;
+  }
 }
 
 /* 一键获取素材按钮：放在链接下方，占满侧栏宽度 */

@@ -326,6 +326,39 @@ function pickMaterial(material) {
   ElMessage.info('双拼格已填满，先点选要替换的格子再点素材，或把素材直接拖进格子')
 }
 
+// 单组预览：按导出参数实时合成一张图，用大图查看器放大检查导出效果
+const previewVisible = ref(false)
+const previewUrl = ref('')
+const previewingIndex = ref(-1)
+
+async function previewPair(pairIndex) {
+  if (exporting.value || previewingIndex.value >= 0) return
+  const pair = pairs.value[pairIndex]
+  if (!pair || !pairHasContent(pair)) {
+    ElMessage.info('这一组还没有图片')
+    return
+  }
+  previewingIndex.value = pairIndex
+  try {
+    const canvas = composePair(pair)
+    const blob = await canvasToBlob(canvas, 'image/png', 0.92)
+    previewUrl.value = URL.createObjectURL(blob)
+    previewVisible.value = true
+  } catch (error) {
+    ElMessage.error(error.message || '预览生成失败')
+  } finally {
+    previewingIndex.value = -1
+  }
+}
+
+function closePreview() {
+  previewVisible.value = false
+  if (previewUrl.value) {
+    URL.revokeObjectURL(previewUrl.value)
+    previewUrl.value = ''
+  }
+}
+
 async function exportPair(pairIndex, format) {
   if (exporting.value) return
   const pair = pairs.value[pairIndex]
@@ -496,6 +529,14 @@ async function onPickFromLibrary(items) {
                   <button
                     type="button"
                     class="pair-mini"
+                    :disabled="!!exporting || previewingIndex === pairIndex"
+                    @click="previewPair(pairIndex)"
+                  >
+                    {{ previewingIndex === pairIndex ? '生成中…' : '预览' }}
+                  </button>
+                  <button
+                    type="button"
+                    class="pair-mini"
                     :disabled="!!exporting"
                     @click="exportPair(pairIndex, 'png')"
                   >
@@ -654,5 +695,13 @@ async function onPickFromLibrary(items) {
       
       </aside>
     </section>
+
+    <!-- 导出效果预览：与实际导出同一套合成逻辑，可缩放旋转查看 -->
+    <el-image-viewer
+      v-if="previewVisible && previewUrl"
+      :url-list="[previewUrl]"
+      :z-index="3000"
+      @close="closePreview"
+    />
   </section>
 </template>

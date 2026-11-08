@@ -24,6 +24,24 @@ const totalImages = computed(() =>
   cachedNotes.value.reduce((count, note) => count + note.images.filter((img) => img.blob).length, 0),
 )
 
+const selectableKeys = computed(() => {
+  const keys = []
+  cachedNotes.value.forEach((note) => {
+    note.images.forEach((img) => {
+      if (img.blob) keys.push(`${note.id}|${img.url}`)
+    })
+  })
+  return keys
+})
+
+const allSelected = computed(
+  () => selectableKeys.value.length > 0 && selectableKeys.value.every((key) => selected.value.has(key)),
+)
+
+function toggleSelectAll() {
+  selected.value = allSelected.value ? new Set() : new Set(selectableKeys.value)
+}
+
 function toggle(note, img) {
   if (!img.blob) return
   const key = `${note.id}|${img.url}`
@@ -58,6 +76,13 @@ function confirmPick() {
   <el-dialog v-model="visible" title="从素材库选图" width="min(680px, 94vw)">
     <p class="picker-hint">
       {{ multiple ? '可勾选多张，确认后加入本页素材' : '选择一张图片作为本页素材' }}；共 {{ totalImages }} 张可用。
+      <el-button
+        v-if="multiple && selectableKeys.length"
+        type="primary"
+        @click="toggleSelectAll"
+      >
+        {{ allSelected ? '取消全选' : '全选' }}
+      </el-button>
     </p>
 
     <div v-if="cachedNotes.length" class="picker-scroll">

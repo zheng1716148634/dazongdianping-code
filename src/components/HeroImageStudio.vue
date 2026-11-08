@@ -33,11 +33,11 @@ const DEFAULT_PROMPT = [
   '除食物和这一个人物外不要添加任何文字、水印、贴纸、logo，也不要有第二个人物。',
 ].join('')
 
-const SIZES = [
-  { value: '1024x1024', label: '1024 × 1024（1:1 方图）' },
-  { value: '1536x1024', label: '1536 × 1024（3:2 横图）' },
-  { value: '1024x1536', label: '1024 × 1536（2:3 竖图）' },
-]
+// 尺寸不再手动选择：按参考图长宽比自动落到接口支持的三个档位里最接近的一档
+const SIZE_LANDSCAPE = '1536x1024'
+const SIZE_SQUARE = '1024x1024'
+const SIZE_PORTRAIT = '1024x1536'
+const RATIO_THRESHOLD = 1.15
 
 const QUALITIES = [
   { value: 'auto', label: '自动' },
@@ -52,9 +52,7 @@ const PROMPT_KEY = 'hero-ai-prompts'
 
 const uploadRef = ref()
 const reference = ref(null)
-const size = ref(SIZES[0].value)
 const quality = ref('auto')
-const count = ref(1)
 const settingsVisible = ref(false)
 // 大图预览区当前展示谁：'record' = 生成记录，'reference' = 参考图。
 // 生成记录是持久化的，若只按「有没有记录」判断，参考图会被永远盖住。
@@ -74,6 +72,16 @@ const promptDraft = ref(initialPrompt?.text || '')
 const activeConfig = computed(
   () => configs.value.find((item) => item.id === activeId.value) || configs.value[0] || null,
 )
+// 生成尺寸跟随参考图：无参考图时默认方图，有参考图按长宽比选最近档位
+const size = computed(() => {
+  const ref_ = reference.value
+  if (!ref_?.width || !ref_?.height) return SIZE_SQUARE
+  const ratio = ref_.width / ref_.height
+  if (ratio >= RATIO_THRESHOLD) return SIZE_LANDSCAPE
+  if (ratio <= 1 / RATIO_THRESHOLD) return SIZE_PORTRAIT
+  return SIZE_SQUARE
+})
+const sizeLabel = computed(() => size.value.replace('x', ' × '))
 const canGenerate = computed(
   () =>
     !!reference.value &&
@@ -485,7 +493,6 @@ function generate() {
     promptName: promptName.value.trim(),
     size: size.value,
     quality: quality.value,
-    count: count.value,
     config: {
       baseUrl: item.baseUrl,
       apiKey: item.apiKey,
@@ -591,6 +598,25 @@ function loadImage(src) {
 
     <section class="layout">
       <div class="stage-wrap">
+        <div class="pair-export-bar">
+          <span class="pair-export-info">
+            {{ busy
+              ? '正在生成…'
+              : previewingRecord
+                ? `生成结果 · ${activeRecord.model} · ${activeRecord.size}`
+                : reference
+                  ? `参考图 ${reference.width} × ${reference.height}`
+                  : '先上传一张美食照片作为参考图' }}
+          </span>
+          <div class="pair-export-btns">
+            <el-button type="primary" size="small" :disabled="!canGenerate" :loading="busy" @click="generate">
+              {{ busy ? '生成中…' : '生成配图' }}
+            </el-button>
+            <el-button size="small" :disabled="!previewingRecord" @click="downloadActive">下载当前图</el-button>
+            <el-button size="small" :disabled="!previewingRecord" @click="sendActiveToReflection">带到倒影合成</el-button>
+          </div>
+        </div>
+
         <div class="stage hero-stage">
           <div class="hero-preview">
             <el-image
@@ -616,7 +642,7 @@ function loadImage(src) {
             <div v-else class="empty">
               <div>
                 <strong>{{ previewTarget === 'record' ? '还没有生成结果' : '还没有配图' }}</strong>
-                <p>在右侧上传美食照片并填写 API 配置，点「生成配图」开始。</p>
+                <p>在右侧上传美食照片并填写 API 配置，点顶部「生成配图」开始。</p>
               </div>
             </div>
             <span v-if="!previewingRecord && reference" class="preview-tag">参考图</span>
@@ -714,7 +740,7 @@ function loadImage(src) {
 
       <aside class="tray">
         <h2>生成配图</h2>
-        <p class="hint">先配置接口，再上传美食照片，点生成即可。</p>
+        <p class="hint">先配置接口，再上传美食照片，点顶部「生成配图」即可。</p>
 
         <div class="field">
           <div class="field-label"><span>API 配置</span><span>仅存本机</span></div>
@@ -789,10 +815,8 @@ function loadImage(src) {
 
         <div class="field field-split">
           <div>
-            <div class="field-label"><span>尺寸</span></div>
-            <el-select v-model="size" style="width: 100%">
-              <el-option v-for="item in SIZES" :key="item.value" :label="item.label" :value="item.value" />
-            </el-select>
+            <div class="field-label"><span>尺寸</span><span>跟随参考图</span></div>
+            <div class="size-follow">{{ sizeLabel }}</div>
           </div>
           <div>
             <div class="field-label"><span>质量</span></div>
@@ -800,19 +824,6 @@ function loadImage(src) {
               <el-option v-for="item in QUALITIES" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
           </div>
-        </div>
-
-        <div class="field">
-          <div class="field-label"><span>生成数量</span><span>{{ count }} 张</span></div>
-          <el-slider v-model="count" :min="1" :max="4" :step="1" show-stops />
-        </div>
-
-        <div class="actions actions-single">
-          <el-button type="primary" :disabled="!canGenerate" :loading="busy" @click="generate">
-            {{ busy ? '生成中…' : '生成配图' }}
-          </el-button>
-          <el-button :disabled="!previewingRecord" @click="downloadActive">下载当前图</el-button>
-          <el-button :disabled="!previewingRecord" @click="sendActiveToReflection">带到倒影合成</el-button>
         </div>
 
         <div v-if="lastError" class="hero-error">{{ lastError }}</div>

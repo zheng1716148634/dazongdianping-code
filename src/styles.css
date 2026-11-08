@@ -1413,6 +1413,19 @@ h1 {
   color: var(--seal);
 }
 
+/* 美食AI：尺寸跟随参考图，只读展示，不再提供选择 */
+.size-follow {
+  display: flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+  background: rgba(var(--seal-rgb), 0.06);
+  border: 1px dashed rgba(var(--seal-rgb), 0.25);
+  border-radius: 6px;
+}
+
 /* 一键获取素材按钮：放在链接下方，占满侧栏宽度 */
 /* 托盘头部：标题在左、「一键获取素材」悬浮在右上，托盘内部滚动时整行钉在顶部 */
 .tray-head {

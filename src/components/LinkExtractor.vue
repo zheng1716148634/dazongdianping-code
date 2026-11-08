@@ -56,7 +56,7 @@ function saveCookie() {
 const fetchStatus = ref({}) // url -> { state: 'loading' | 'error', message }
 const fetching = computed(() => Boolean(link.value && fetchStatus.value[link.value.url]?.state === 'loading'))
 
-// 只要美食大图：任一边不大于该值的（头像、图标、码）直接丢弃，>500 才列入清单
+// 只要美食大图：任一边不大于该值的（头像、图标、码）直接丢弃，>1000 才列入清单
 const MIN_FOOD_SIDE = 1000
 
 // 文本域随内容自动增高，内部不出现滚动条
@@ -135,7 +135,7 @@ async function keepFoodImages(images) {
   return { kept, dropped }
 }
 
-async function fetchMaterial(item) {
+async function fetchMaterial(item, options = {}) {
   if (!hasLogin.value) {
     ElMessage.warning('先填写点评 Cookie（已登录状态下的），才能抓到笔记内容')
     openCookieDialog()
@@ -185,10 +185,16 @@ async function fetchMaterial(item) {
       images: kept,
       fetchedAt: Date.now(),
     }
+    // 「一键获取素材」走 replace 模式：先把上一次的素材（含图片）清掉，再存这次的，
+    // 素材库里始终只保留最新抓取的这一条；「重新获取」等其他入口不受影响
+    if (options.replace) {
+      await clearAllNotes()
+    }
     await upsertNote(note)
     fetchStatus.value = { ...fetchStatus.value, [item.url]: { state: 'done' } }
     const filtered = dropped ? `（过滤 ${dropped} 张小图）` : ''
-    ElMessage.success(`已获取「${note.title}」：${kept.length} 张美食图 + 文案${filtered}`)
+    const replaced = options.replace ? '，已清空上一次素材' : ''
+    ElMessage.success(`已获取「${note.title}」：${kept.length} 张美食图 + 文案${filtered}${replaced}`)
   } catch (err) {
     fetchStatus.value = { ...fetchStatus.value, [item.url]: { state: 'error', message: String(err.message || err) } }
     ElMessage.error(String(err.message || err))
@@ -201,7 +207,7 @@ async function fetchLink() {
     ElMessage.warning('目前只支持大众点评笔记链接（m.dianping.com 或 dpurl.cn 短链）')
     return
   }
-  await fetchMaterial(link.value)
+  await fetchMaterial(link.value, { replace: true })
 }
 
 // 工具栏「重新获取」：按新解析规则重抓素材库里的全部笔记

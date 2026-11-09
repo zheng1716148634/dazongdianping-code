@@ -204,8 +204,8 @@ export async function runGeneration(options) {
     for (let index = 0; index < entries.length; index += 1) {
       const material = await materialize(entries[index])
       if (!material.blob && !material.remoteUrl) continue
-      // 输出统一裁切缩放为固定的 1080 × 1440（3:4），与接口返回尺寸无关
-      const cropped = await toOutputSize(material.blob)
+      // 输出统一裁成 3:4，保证不管接口返回什么尺寸，记录里的图都是 3:4
+      const cropped = await cropToThreeFour(material.blob)
       created.push(
         plain({
           id: newId('img'),
@@ -266,11 +266,8 @@ async function materialize(entry) {
   }
 }
 
-// 输出固定尺寸：按 3:4 居中裁切后缩放，最终图严格为 1080 × 1440
-const OUTPUT_WIDTH = 1080
-const OUTPUT_HEIGHT = 1440
-
-async function toOutputSize(blob) {
+// 输出统一裁成 3:4：保持短边不变，居中去掉多余的一边
+async function cropToThreeFour(blob) {
   if (!blob) return null
   const url = URL.createObjectURL(blob)
   try {
@@ -279,15 +276,16 @@ async function toOutputSize(blob) {
     const height = image.naturalHeight
     if (!width || !height) return null
 
-    const target = OUTPUT_WIDTH / OUTPUT_HEIGHT
+    const target = 3 / 4
     let cropWidth = width
     let cropHeight = height
     if (width / height > target) cropWidth = Math.round(height * target)
     else cropHeight = Math.round(width / target)
+    if (cropWidth >= width && cropHeight >= height) return { blob, width, height }
 
     const canvas = document.createElement('canvas')
-    canvas.width = OUTPUT_WIDTH
-    canvas.height = OUTPUT_HEIGHT
+    canvas.width = cropWidth
+    canvas.height = cropHeight
     canvas
       .getContext('2d')
       .drawImage(
@@ -298,12 +296,12 @@ async function toOutputSize(blob) {
         cropHeight,
         0,
         0,
-        OUTPUT_WIDTH,
-        OUTPUT_HEIGHT,
+        cropWidth,
+        cropHeight,
       )
     const output = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'))
     if (!output) return null
-    return { blob: output, width: OUTPUT_WIDTH, height: OUTPUT_HEIGHT }
+    return { blob: output, width: cropWidth, height: cropHeight }
   } catch {
     return null
   } finally {
@@ -311,18 +309,18 @@ async function toOutputSize(blob) {
   }
 }
 
-// 参考图预览图：记录里保留 1024px 内的版本，既做卡片上的原图角标，也用于原图/生成结果对比预览
+// 参考图缩略图：让每条记录能看出「是哪张原图生成的」，压缩到 200px 内
 async function makeThumb(file) {
   const url = URL.createObjectURL(file)
   try {
     const image = await loadImage(url)
-    const maxSide = 1024
+    const maxSide = 200
     const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight))
     const canvas = document.createElement('canvas')
     canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
     canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
     canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height)
-    return await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.82))
+    return await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.72))
   } catch {
     return null
   } finally {

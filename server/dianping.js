@@ -3,6 +3,8 @@
 // 2. /api/dp/image  GET  ?url=...       —— 转存点评/美团 CDN 图片，便于前端拿 blob 存 IndexedDB
 // 只允许 dianping.com / meituan.net / dpfile.com 三个域，防止被当成通用代理。
 
+import { Readable } from 'node:stream'
+
 const ALLOWED_HOST_RE = /(^|\.)(dianping\.com|meituan\.net|dpfile\.com|dpurl\.cn)$/i
 // 点评官方短链（如 http://dpurl.cn/Vl0OUcjz），302 到真实笔记页
 const SHORT_HOST_RE = /(^|\.)dpurl\.cn$/i
@@ -118,11 +120,15 @@ export async function handleImage(req, res) {
     if (!response.ok || !response.body) {
       return sendJson(res, 502, { error: 'IMAGE_FETCH_FAILED', status: response.status })
     }
-    const buffer = new Uint8Array(await response.arrayBuffer())
+    // 流式转发：不等 CDN 把整张图传完，首字节到了就开始回给浏览器，
+    // 浏览器能更早开始渲染/下载下一张，函数内存占用也更低
     res.statusCode = 200
     res.setHeader('Content-Type', response.headers.get('content-type') || 'image/jpeg')
     res.setHeader('Cache-Control', 'public, max-age=86400')
-    res.end(buffer)
+    const stream = Readable.fromWeb(response.body)
+    // 中途断流时直接掐掉响应，让前端按失败处理，避免未捕获的 stream error
+    stream.on('error', () => res.destroy())
+    stream.pipe(res)
   } catch (err) {
     sendJson(res, 502, { error: 'IMAGE_FETCH_FAILED', message: String(err && err.message) })
   }

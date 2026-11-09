@@ -98,7 +98,8 @@ async function downloadImages(urls) {
       }
     }
   }
-  await Promise.all(Array.from({ length: Math.min(3, urls.length) }, worker))
+  // 并发 6：Vercel 上单张图主要耗在跨境网络等待，多开几个并行比省连接更划算
+  await Promise.all(Array.from({ length: Math.min(6, urls.length) }, worker))
   return images
 }
 

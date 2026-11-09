@@ -178,6 +178,15 @@ function removePair(pairIndex) {
   selectedSlot.value = -1
 }
 
+// 手动新增一组空白双拼模板，可在组内拖图/点素材填充
+function addPair() {
+  pairs.value.push({
+    id: `pair-${Date.now()}-manual`,
+    label: `双拼 ${pairs.value.length + 1}`,
+    slots: [emptySlot(), emptySlot()],
+  })
+}
+
 // 与导出同一套 cover 数学：fracW/fracH 都以画布宽度为单位
 function slotMetrics(slot) {
   const material = materialOf(slot)
@@ -500,6 +509,7 @@ async function onPickFromLibrary(items) {
             {{ totalPairs ? `共 ${totalPairs} 组 · 可导出 ${exportablePairs} 组` : '等待上传' }}
           </span>
           <div class="pair-export-btns">
+            <el-button size="small" @click="addPair">新增模板</el-button>
             <el-button
               type="primary"
               size="small"

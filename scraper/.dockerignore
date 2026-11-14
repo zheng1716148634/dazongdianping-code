@@ -1,0 +1,7 @@
+# 构建上下文收窄：.state 里有登录 Cookie、.venv 有几百 MB，都不该进镜像
+.venv/
+.state/
+__pycache__/
+*.log
+*.md
+Dockerfile

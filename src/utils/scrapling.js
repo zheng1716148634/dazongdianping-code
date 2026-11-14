@@ -5,6 +5,14 @@
 
 const BASE = '/api/scrapling'
 
+// 服务端会回一个 x-scraper-target，告诉前端这台引擎是「本地起的」还是「远程自建的」。
+// 远程引擎没有桌面环境，弹不出扫码窗口，UI 要换成推 Cookie 的路径。
+let lastTarget = ''
+
+export function engineTarget() {
+  return lastTarget || 'local'
+}
+
 export class ScraplingOfflineError extends Error {
   constructor(message) {
     super(message || 'Scrapling 服务未启动')
@@ -37,6 +45,7 @@ async function call(path, { method = 'GET', body, timeout = 120000 } = {}) {
   } catch {
     data = null
   }
+  lastTarget = res.headers.get('x-scraper-target') || lastTarget
   if (res.status === 503 && data?.error === 'SCRAPLING_OFFLINE') {
     throw new ScraplingOfflineError(data.message)
   }
@@ -65,6 +74,12 @@ export function pollLogin() {
 
 export function logout() {
   return call('/logout', { method: 'POST', timeout: 8000 })
+}
+
+// 把用户在「填写 Cookie」里贴的那条串直接推给引擎。
+// 本地开发用不上（本地能扫码），但线上边车没有桌面环境，这是唯一的登录手段。
+export function setEngineCookies(cookie) {
+  return call('/cookies', { method: 'POST', body: { cookie }, timeout: 15000 })
 }
 
 // mode: 'stealth' 走隐身浏览器（能过 Cloudflare、能拿实况视频），

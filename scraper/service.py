@@ -15,6 +15,7 @@
     一串 Playwright 报错。
 """
 
+import hmac
 import json
 import os
 import re
@@ -44,8 +45,28 @@ MOBILE_UA = (
 app = Flask(__name__)
 app.config["JSON_AS_ASCII"] = False
 
+# 部署到公网（Docker / VPS / Render）时必须设 SCRAPER_TOKEN，否则这台机器就成了
+# 谁都能用的点评抓取代理。本地开发不设就走免鉴权。
+TOKEN = (os.environ.get("SCRAPER_TOKEN") or "").strip()
+
 LOGIN = {"running": False, "waiting": False, "since": 0.0, "error": ""}
 _LOGIN_LOCK = threading.Lock()
+
+
+def authorized() -> bool:
+    if not TOKEN:
+        return True
+    got = request.headers.get("X-Scraper-Token") or request.args.get("token") or ""
+    return hmac.compare_digest(got, TOKEN)
+
+
+@app.before_request
+def _guard():
+    # /health 免鉴权，方便探活；但它只返回最小信息，免得把路径、昵称漏出去
+    if authorized() or request.path == "/health":
+        return None
+    return jsonify({"error": "UNAUTHORIZED", "message": "缺少或错误的 X-Scraper-Token"}), 401
+
 
 
 # ---------------------------------------------------------------- 通用小工具
@@ -61,17 +82,31 @@ def scrapling_version():
 
 
 def browser_ready():
-    """浏览器内核是否已经下载好（`scrapling install` 之后 LOCALAPPDATA 下会有 chromium 目录）。"""
-    root = Path(os.environ.get("LOCALAPPDATA", "")) / "ms-playwright"
-    try:
-        if root.exists() and any(root.glob("chromium-*/chrome-*/chrome.exe")):
-            return True
-    except Exception:
-        pass
+    """浏览器内核是否已经下载好。
+
+    三个可能的位置都查一遍：容器里是 PLAYWRIGHT_BROWSERS_PATH，Windows 是 LOCALAPPDATA，
+    Linux 裸机是 ~/.cache。只看 .exe 会在 Docker 里误报「未安装」。
+    """
+    roots = []
+    if os.environ.get("PLAYWRIGHT_BROWSERS_PATH"):
+        roots.append(Path(os.environ["PLAYWRIGHT_BROWSERS_PATH"]))
+    if os.environ.get("LOCALAPPDATA"):
+        roots.append(Path(os.environ["LOCALAPPDATA"]) / "ms-playwright")
+    roots.append(Path.home() / ".cache" / "ms-playwright")
+
+    for root in roots:
+        try:
+            for exe in root.glob("chromium*/*/chrome*"):
+                if exe.is_file():
+                    return True
+        except Exception:
+            continue
     # 允许直接用系统已装的 Chrome（StealthyFetcher 的 real_chrome 选项）
     for candidate in (
         Path(os.environ.get("PROGRAMFILES", "C:/Program Files")) / "Google/Chrome/Application/chrome.exe",
         Path(os.environ.get("PROGRAMFILES(X86)", "C:/Program Files (x86)")) / "Google/Chrome/Application/chrome.exe",
+        Path("/usr/bin/google-chrome"),
+        Path("/usr/bin/chromium"),
     ):
         if candidate.exists():
             return True
@@ -399,6 +434,44 @@ def logout():
     return jsonify({"ok": True, "loggedIn": False})
 
 
+@app.post("/cookies")
+def set_cookies():
+    """直接把一条 Cookie 字符串写进登录态。
+
+    给线上部署用：服务器上没有桌面环境，弹不出扫码窗口，只能让用户在自己电脑上
+    登录好，复制 Cookie 通过这个接口推进来。接受两种格式：
+        {"cookie": "a=1; b=2"}      浏览器 DevTools 里复制的那种
+        {"cookies": {"a": "1"}}     JSON 形式
+    """
+    body = request.get_json(force=True, silent=True) or {}
+    raw = body.get("cookie") or body.get("cookies") or ""
+    if isinstance(raw, dict):
+        cookies = {str(k): str(v) for k, v in raw.items()}
+    else:
+        cookies = {}
+        for part in str(raw).split(";"):
+            if "=" not in part:
+                continue
+            key, value = part.split("=", 1)
+            key = key.strip()
+            if key:
+                cookies[key] = value.strip()
+    if not cookies:
+        return jsonify({"error": "EMPTY_COOKIE", "message": "没解析出任何键值对，确认是 a=1; b=2 这种格式"}), 400
+
+    COOKIE_FILE.parent.mkdir(parents=True, exist_ok=True)
+    COOKIE_FILE.write_text(
+        json.dumps(
+            {"cookies": cookies, "nickname": "", "savedAt": int(time.time() * 1000), "source": "manual"},
+            ensure_ascii=False,
+            indent=2,
+        ),
+        "utf-8",
+    )
+    return jsonify({"ok": True, "count": len(cookies), **login_state()})
+
+
+
 # ---------------------------------------------------------------- 媒体代理
 
 
@@ -474,18 +547,27 @@ def media():
 
 @app.get("/health")
 def health():
-    return jsonify(
-        {
-            "ok": True,
-            "scrapling": scrapling_version(),
-            "browser": browser_ready(),
-            "login": login_state(),
-            "cookieFile": str(COOKIE_FILE),
-        }
-    )
+    state = login_state()
+    payload = {
+        "ok": True,
+        "scrapling": scrapling_version(),
+        "browser": browser_ready(),
+        "login": state,
+        # 带 token 部署时 /health 免鉴权，就别把服务端路径暴露出去
+        "authRequired": bool(TOKEN),
+    }
+    if not TOKEN or authorized():
+        payload["cookieFile"] = str(COOKIE_FILE)
+    return jsonify(payload)
 
 
 if __name__ == "__main__":
+    # 容器里必须监听 0.0.0.0，否则端口映射进来连不上
+    host = os.environ.get("SCRAPER_HOST", "127.0.0.1")
     port = int(os.environ.get("SCRAPER_PORT", "8765"))
-    print(f"[scrapling] service on http://127.0.0.1:{port}  (scrapling={scrapling_version() or '未安装'})")
-    app.run(host="127.0.0.1", port=port, threaded=True)
+    print(
+        f"[scrapling] service on http://{host}:{port}  "
+        f"(scrapling={scrapling_version() or '未安装'}, auth={'on' if TOKEN else 'off'})",
+        flush=True,
+    )
+    app.run(host=host, port=port, threaded=True)

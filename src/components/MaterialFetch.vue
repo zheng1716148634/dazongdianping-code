@@ -19,11 +19,13 @@ import {
   VideoPlay,
 } from '@element-plus/icons-vue'
 import {
+  engineTarget,
   fetchNote,
   getHealth,
   logout as logoutEngine,
   mediaUrl,
   pollLogin,
+  setEngineCookies,
   startBrowserLogin,
 } from '../utils/scrapling'
 import { extractFeedId, isDianpingUrl, isDpShortUrl, normalizeNoteUrl, parseFeedHtml } from '../utils/dianping'
@@ -43,23 +45,32 @@ const onlyBig = ref(true)
 
 // ---------- 引擎状态 ----------
 
-const health = ref({ online: false, checking: true, version: '', browser: false, message: '' })
+const health = ref({ online: false, checking: true, version: '', browser: false, message: '', target: 'local' })
 const login = ref({ loggedIn: false, nickname: '', savedAt: 0 })
 
 async function refreshHealth() {
   health.value = { ...health.value, checking: true }
   try {
     const data = await getHealth()
+    if (!data || typeof data !== 'object') throw new Error('接口返回的不是 JSON，可能是线上没配置引擎')
     health.value = {
       online: true,
       checking: false,
       version: data.scrapling || '',
       browser: Boolean(data.browser),
       message: '',
+      target: engineTarget(),
     }
     login.value = data.login || { loggedIn: false }
   } catch (err) {
-    health.value = { online: false, checking: false, version: '', browser: false, message: String(err.message || err) }
+    health.value = {
+      online: false,
+      checking: false,
+      version: '',
+      browser: false,
+      message: String(err.message || err),
+      target: engineTarget(),
+    }
   }
 }
 
@@ -144,6 +155,8 @@ const detected = computed(() => {
 })
 
 const engineOnline = computed(() => health.value.online)
+// 远程自建的引擎（Vercel 线上场景）：没有桌面环境，弹不出扫码窗口，只能推 Cookie
+const engineRemote = computed(() => health.value.target === 'remote')
 
 // ---------- 任务队列 ----------
 
@@ -265,17 +278,37 @@ async function buildImages(parsed, liveList, viaEngine) {
 // ---------- 两条抓取通道 ----------
 
 async function scrapeByEngine(url) {
+  // 引擎还没登录、手里又有 Cookie：先推过去。
+  // 本地开发用不上（本地能扫码），但线上引擎没有桌面环境，这是唯一的登录方式。
+  if (!login.value.loggedIn && cookie.value) {
+    try {
+      const res = await setEngineCookies(cookie.value)
+      if (res?.loggedIn) {
+        login.value = { ...login.value, loggedIn: true, savedAt: res.savedAt || Date.now() }
+        ElMessage.success('已把 Cookie 同步到抓取引擎')
+      }
+    } catch {
+      // 同步失败不阻塞：让引擎按现状抓，真没登录会在下面按“需要登录”处理
+    }
+  }
+
   const data = await fetchNote(url, { mode: mode.value, withLive: withLive.value })
   if (data.loginRequired) {
-    const error = new Error('点评要求登录：点左上「扫码登录」后再试')
-    error.needLogin = true
+    const error = new Error(
+      engineRemote.value
+        ? '线上引擎未登录：点「填写 Cookie」贴一条有效 Cookie，会自动同步过去'
+        : '点评要求登录：点左上「扫码登录」后再试',
+    )
+    if (engineRemote.value) error.needCookie = true
+    else error.needLogin = true
     throw error
   }
   if (!data.html) throw new Error('引擎没有返回页面内容')
   const parsed = parseFeedHtml(data.html)
   if (parsed.loginRequired) {
-    const error = new Error('页面被重定向到登录页，请重新扫码登录')
-    error.needLogin = true
+    const error = new Error(engineRemote.value ? '页面被重定向到登录页：更新「填写 Cookie」里的登录态' : '页面被重定向到登录页，请重新扫码登录')
+    if (engineRemote.value) error.needCookie = true
+    else error.needLogin = true
     throw error
   }
   const images = await buildImages(parsed, data.live || [], true)
@@ -545,7 +578,9 @@ onBeforeUnmount(() => {
               <strong>{{ engineOnline ? 'Scrapling 已就绪' : 'Scrapling 未启动' }}</strong>
               <p v-if="engineOnline">
                 版本 {{ health.version || '未知' }} · 浏览器{{ health.browser ? '可用' : '未安装' }}
+                <template v-if="engineRemote"> · 远程引擎</template>
               </p>
+              <p v-else-if="health.message">{{ health.message }}</p>
               <p v-else>在项目根目录执行 <code>npm run scraper</code> 启动本地引擎；未启动时自动降级为 Cookie 抓取。</p>
             </div>
             <el-button size="small" :loading="health.checking" @click="refreshHealth">重试</el-button>
@@ -554,10 +589,13 @@ onBeforeUnmount(() => {
           <div v-if="engineOnline" class="engine-login">
             <span class="engine-login-state">
               <el-icon><User /></el-icon>
-              {{ login.loggedIn ? `已登录${login.nickname ? ` · ${login.nickname}` : ''}` : '未登录（公开笔记也能抓）' }}
+              {{ login.loggedIn ? `已登录${login.nickname ? ` · ${login.nickname}` : ''}` : engineRemote ? '未登录 · 远程引擎' : '未登录（公开笔记也能抓）' }}
             </span>
             <span class="engine-login-actions">
-              <el-button size="small" :loading="loginBusy" @click="startLogin">
+              <el-button v-if="engineRemote" size="small" @click="openCookieDialog">
+                {{ login.loggedIn ? '更新 Cookie' : '填写 Cookie' }}
+              </el-button>
+              <el-button v-else size="small" :loading="loginBusy" @click="startLogin">
                 {{ login.loggedIn ? '重新登录' : '扫码登录' }}
               </el-button>
               <el-button v-if="login.loggedIn" size="small" text type="danger" @click="doLogout">退出</el-button>

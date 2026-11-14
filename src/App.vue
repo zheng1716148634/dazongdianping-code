@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { Brush, Check } from '@element-plus/icons-vue'
 import ReflectionStudio from './components/ReflectionStudio.vue'
 import LinkExtractor from './components/LinkExtractor.vue'
+import MaterialFetch from './components/MaterialFetch.vue'
 import CollageStudio from './components/CollageStudio.vue'
 import PairStudio from './components/PairStudio.vue'
 import HeroImageStudio from './components/HeroImageStudio.vue'
@@ -12,11 +13,15 @@ import { THEMES, savedTheme, setTheme } from './utils/theme'
 
 const PAGES = [
   { key: 'links', title: 'AI提取素材', component: LinkExtractor, hash: '#/links' },
+  { key: 'fetch', title: '素材获取', component: MaterialFetch, hash: '#/fetch' },
   { key: 'hero', title: '美食AI', component: HeroImageStudio, hash: '#/hero' },
   { key: 'collage', title: '单图拼接', component: CollageStudio, hash: '#/collage' },
   { key: 'pair', title: '批量拼接', component: PairStudio, hash: '#/pair' },
   { key: 'reflect', title: '倒影合成', component: ReflectionStudio, hash: '#/reflect' },
 ]
+
+// 按 key 取页面，避免以后插页导致下标错位
+const heroPage = PAGES.find((page) => page.key === 'hero')
 
 function pageFromHash() {
   return PAGES.find((page) => page.hash === window.location.hash) || PAGES[0]
@@ -79,7 +84,7 @@ onMounted(() => {
           type="button"
           class="job-badge"
           :title="`有 ${pendingJobs.length} 个配图任务在后台生成，点此回到美食配图`"
-          @click="go(PAGES[1])"
+          @click="go(heroPage)"
         >
           <span class="job-spinner" aria-hidden="true"></span>
           配图生成中

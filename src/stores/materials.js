@@ -7,26 +7,54 @@ export const cachedNotes = ref([])
 
 let initPromise = null
 
+// 每条图片可能是一张静图，也可能是一张「实况图」：静图 + 一段 2~3 秒的短视频。
+// live.videoBlob 与 images[].blob 一样存进 IndexedDB，内存里再挂 videoSrc 供 <video> 直接用。
+function hydrateImage(img) {
+  const hydrated = {
+    ...img,
+    kind: img.kind || 'image',
+    src: img.blob ? URL.createObjectURL(img.blob) : img.url,
+  }
+  if (img.live?.videoBlob) {
+    hydrated.live = { ...img.live, videoSrc: URL.createObjectURL(img.live.videoBlob) }
+  }
+  return hydrated
+}
+
 function hydrate(note) {
   return {
     ...note,
-    images: (note.images || []).map((img) => ({
-      ...img,
-      src: img.blob ? URL.createObjectURL(img.blob) : img.url,
-    })),
+    source: note.source || 'cookie',
+    images: (note.images || []).map(hydrateImage),
   }
+}
+
+// 落库前把 objectURL（不能序列化）剥掉，只留能存的 Blob 和原始地址
+function plainImage(img) {
+  const out = { url: img.url, blob: img.blob, width: img.width, height: img.height, kind: img.kind || 'image' }
+  if (img.live) {
+    out.live = {
+      videoUrl: img.live.videoUrl,
+      videoBlob: img.live.videoBlob,
+      duration: img.live.duration,
+      width: img.live.width,
+      height: img.live.height,
+    }
+  }
+  return out
 }
 
 function plain(note) {
   return {
     ...note,
-    images: (note.images || []).map(({ url, blob, width, height }) => ({ url, blob, width, height })),
+    images: (note.images || []).map(plainImage),
   }
 }
 
 function revokeNote(note) {
   note?.images.forEach((img) => {
     if (img.src?.startsWith('blob:')) URL.revokeObjectURL(img.src)
+    if (img.live?.videoSrc?.startsWith('blob:')) URL.revokeObjectURL(img.live.videoSrc)
   })
 }
 
@@ -71,6 +99,7 @@ export async function removeImageFromNote(noteId, imageUrl) {
   if (!note) return
   const img = note.images.find((i) => i.url === imageUrl)
   if (img?.src?.startsWith('blob:')) URL.revokeObjectURL(img.src)
+  if (img?.live?.videoSrc?.startsWith('blob:')) URL.revokeObjectURL(img.live.videoSrc)
   note.images = note.images.filter((i) => i.url !== imageUrl)
   await saveNote(plain(note))
 }

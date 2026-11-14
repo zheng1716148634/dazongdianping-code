@@ -7,3 +7,9 @@ dist/
 # Env files
 .env
 .env.local
+
+# Scrapling 边车：虚拟环境、浏览器登录态、日志都不入库
+scraper/.venv/
+scraper/.state/
+scraper/*.log
+__pycache__/

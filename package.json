@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "scraper": "scraper/.venv/Scripts/python.exe scraper/service.py",
+    "scraper:setup": "python -m venv scraper/.venv && scraper/.venv/Scripts/python.exe -m pip install -r scraper/requirements.txt && scraper/.venv/Scripts/scrapling.exe install"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",

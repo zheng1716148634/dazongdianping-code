@@ -153,7 +153,16 @@ async function onFileChange(uploadFile) {
   }
 }
 
-function clearReference() {
+async function clearReference() {
+  try {
+    await ElMessageBox.confirm('确定移除当前参考图吗？', '移除参考图', {
+      type: 'warning',
+      confirmButtonText: '确认移除',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
   if (reference.value) URL.revokeObjectURL(reference.value.url)
   reference.value = null
   uploadRef.value?.clearFiles()
@@ -182,7 +191,16 @@ function addConfig() {
   persist()
 }
 
-function removeConfig(item) {
+async function removeConfig(item) {
+  try {
+    await ElMessageBox.confirm(
+      `确定删除「${item.name}」这套 API 配置吗？删除后无法恢复。`,
+      '删除接口配置',
+      { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
   configs.value = configs.value.filter((entry) => entry.id !== item.id)
   if (!configs.value.length) {
     const fallback = createConfig({ name: '默认接口' })
@@ -331,9 +349,18 @@ function savePromptAsNew() {
   ElMessage.success('已另存为一套新提示词')
 }
 
-function removePrompt() {
+async function removePrompt() {
   if (prompts.value.length <= 1) {
     ElMessage.warning('至少保留一套提示词')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确定删除「${promptName.value}」这套提示词吗？删除后无法恢复。`,
+      '删除提示词',
+      { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' },
+    )
+  } catch {
     return
   }
   prompts.value = prompts.value.filter((item) => item.id !== activePromptId.value)
@@ -562,6 +589,19 @@ async function confirmClear() {
   ElMessage.success('生成记录已清空')
 }
 
+async function confirmRemoveRecord(item) {
+  try {
+    await ElMessageBox.confirm('确定删除这条生成记录吗？删除后无法恢复。', '删除记录', {
+      type: 'warning',
+      confirmButtonText: '确认删除',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+  await removeRecord(item.id)
+}
+
 function formatTime(stamp) {
   if (!stamp) return ''
   const date = new Date(stamp)
@@ -735,7 +775,7 @@ function loadImage(src) {
                   预览
                 </button>
                 <button type="button" class="pair-mini" @click="downloadItem(item)">下载</button>
-                <button type="button" class="pair-mini danger" @click="removeRecord(item.id)">删除</button>
+                <button type="button" class="pair-mini danger" @click="confirmRemoveRecord(item)">删除</button>
               </div>
             </article>
           </div>

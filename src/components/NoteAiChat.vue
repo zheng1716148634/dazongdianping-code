@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { ChatDotRound, CopyDocument, Promotion, RefreshLeft, Setting } from '@element-plus/icons-vue'
 
 // 文生文 AI 对话框：针对单条笔记内容做多轮改写。
@@ -318,8 +318,17 @@ function usePreset(text) {
   input.value = text
 }
 
-function clearChat() {
+async function clearChat() {
   if (sending.value) return
+  try {
+    await ElMessageBox.confirm('确定清空当前对话记录吗？清空后无法恢复。', '清空对话', {
+      type: 'warning',
+      confirmButtonText: '确认清空',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
   messages.value = []
   input.value = ''
 }

@@ -236,6 +236,15 @@ function refetchNote(note) {
 }
 
 async function removeImage(note, img) {
+  try {
+    await ElMessageBox.confirm('确定从这条笔记中移除这张图片吗？', '移除图片', {
+      type: 'warning',
+      confirmButtonText: '确认移除',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
   await removeImageFromNote(note.id, img.url)
   ElMessage.success('已移除这张图')
 }

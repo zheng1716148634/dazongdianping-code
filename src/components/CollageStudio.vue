@@ -1,8 +1,16 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
-import { canvasToBlob, downloadBlob, drawImageCover, flattenOnWhite } from '../utils/composeImage'
+import {
+  canvasToBlob,
+  computeCoverMetrics,
+  downloadBlob,
+  drawImageCover,
+  flattenOnWhite,
+  localPanToOffset,
+  screenDeltaToLocalPan,
+} from '../utils/composeImage'
 import { blobToFile } from '../utils/imageHandoff'
 import MaterialPicker from './MaterialPicker.vue'
 
@@ -90,6 +98,7 @@ const exporting = ref('')
 const dragOverIndex = ref(-1)
 const grabbingIndex = ref(-1)
 const panState = { pointerId: null, index: -1, startX: 0, startY: 0, panX: 0, panY: 0 }
+const rotateState = { pointerId: null, index: -1, centerX: 0, centerY: 0, startAngle: 0, startRotation: 0 }
 
 const currentTemplate = computed(
   () => TEMPLATES.find((template) => template.key === templateKey.value) || TEMPLATES[0],
@@ -117,8 +126,35 @@ const selectedZoom = computed({
   },
 })
 
+const selectedRotation = computed({
+  get() {
+    const cell = cells.value[selectedCell.value]
+    return cell && cell.materialId ? Math.round(cell.rotation || 0) : 0
+  },
+  set(value) {
+    const cell = cells.value[selectedCell.value]
+    if (!cell) return
+    cell.rotation = normalizeAngle(value)
+    clampPan(cell, selectedCell.value)
+  },
+})
+
+// 90° 快捷旋转：在当前角度上叠加并归一化到 -180~180
+function rotateSelected(deg) {
+  const cell = cells.value[selectedCell.value]
+  if (!cell || !cell.materialId) return
+  cell.rotation = normalizeAngle((cell.rotation || 0) + deg)
+  clampPan(cell, selectedCell.value)
+}
+
+function normalizeAngle(value) {
+  const deg = Number(value)
+  if (!Number.isFinite(deg)) return 0
+  return (((deg + 180) % 360) + 360) % 360 - 180
+}
+
 function emptyCell() {
-  return { materialId: null, scale: 1, pan: { x: 0, y: 0 } }
+  return { materialId: null, scale: 1, rotation: 0, pan: { x: 0, y: 0 } }
 }
 
 function applyTemplate(template) {
@@ -159,15 +195,26 @@ async function onFileChange(uploadFile) {
   }
 }
 
-function removeMaterial(id) {
+async function removeMaterial(id) {
   const index = materials.value.findIndex((material) => material.id === id)
   if (index < 0) return
-  URL.revokeObjectURL(materials.value[index].url)
+  const target = materials.value[index]
+  try {
+    await ElMessageBox.confirm(
+      `确定删除素材「${target.name}」吗？删除后无法恢复。`,
+      '删除素材',
+      { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  URL.revokeObjectURL(target.url)
   materials.value.splice(index, 1)
   cells.value.forEach((cell) => {
     if (cell.materialId === id) {
       cell.materialId = null
       cell.scale = 1
+      cell.rotation = 0
       cell.pan.x = 0
       cell.pan.y = 0
     }
@@ -193,6 +240,7 @@ function assignToCell(index, material) {
   const cell = cells.value[index]
   cell.materialId = material.id
   cell.scale = 1
+  cell.rotation = 0
   cell.pan.x = 0
   cell.pan.y = 0
   selectedCell.value = index
@@ -223,10 +271,20 @@ function selectCell(index) {
   selectedCell.value = index
 }
 
-function clearCell(index) {
+async function clearCell(index) {
+  try {
+    await ElMessageBox.confirm('确定清空这个格子里的素材吗？', '清空此格', {
+      type: 'warning',
+      confirmButtonText: '确认清空',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
   const cell = cells.value[index]
   cell.materialId = null
   cell.scale = 1
+  cell.rotation = 0
   cell.pan.x = 0
   cell.pan.y = 0
 }
@@ -234,6 +292,7 @@ function clearCell(index) {
 function resetCellView(index) {
   const cell = cells.value[index]
   cell.scale = 1
+  cell.rotation = 0
   cell.pan.x = 0
   cell.pan.y = 0
 }
@@ -242,7 +301,7 @@ function materialOf(cell) {
   return cell.materialId ? materialMap.value[cell.materialId] : null
 }
 
-// 与导出同一套 cover 缩放数学，保证预览即所得
+// 与导出同一套 cover 缩放数学，保证预览即所得（含旋转）
 function cellMetrics(cell, index) {
   const material = materialOf(cell)
   if (!material) return null
@@ -252,17 +311,22 @@ function cellMetrics(cell, index) {
   const cellWidth = rect.w - gapPx
   const cellHeight = rect.h / template.aspect - gapPx
   const img = material.image
-  const imgRatio = img.naturalWidth / img.naturalHeight
-  const kx = Math.max(1, (cellHeight * imgRatio) / cellWidth) * cell.scale
-  const ky = Math.max(1, cellWidth / (cellHeight * imgRatio)) * cell.scale
-  return { img, cellWidth, cellHeight, kx, ky }
+  const m = computeCoverMetrics({
+    cellWidth,
+    cellHeight,
+    imgW: img.naturalWidth,
+    imgH: img.naturalHeight,
+    zoom: cell.scale,
+    rotation: cell.rotation || 0,
+  })
+  return { img, cellWidth, cellHeight, ...m }
 }
 
 function clampPan(cell, index) {
   const metrics = cellMetrics(cell, index)
   if (!metrics) return
-  cell.pan.x = metrics.kx > 1 ? clamp(cell.pan.x, -1, 1) : 0
-  cell.pan.y = metrics.ky > 1 ? clamp(cell.pan.y, -1, 1) : 0
+  cell.pan.x = metrics.panX > 0 ? clamp(cell.pan.x, -1, 1) : 0
+  cell.pan.y = metrics.panY > 0 ? clamp(cell.pan.y, -1, 1) : 0
 }
 
 function cellBoxStyle(index) {
@@ -280,12 +344,17 @@ function cellBoxStyle(index) {
 function cellImageStyle(cell, index) {
   const metrics = cellMetrics(cell, index)
   if (!metrics) return {}
-  const { kx, ky } = metrics
+  const { kx, ky, panX, panY, cos, sin, cellWidth, cellHeight } = metrics
+  const { ox, oy } = localPanToOffset(cell.pan.x, cell.pan.y, panX, panY, cos, sin)
+  const widthPct = kx * 100
+  const heightPct = ky * 100
   return {
-    left: `${(((1 - kx) * (1 - cell.pan.x)) / 2) * 100}%`,
-    top: `${(((1 - ky) * (1 - cell.pan.y)) / 2) * 100}%`,
-    width: `${kx * 100}%`,
-    height: `${ky * 100}%`,
+    left: `${50 + (ox / cellWidth) * 100 - widthPct / 2}%`,
+    top: `${50 + (oy / cellHeight) * 100 - heightPct / 2}%`,
+    width: `${widthPct}%`,
+    height: `${heightPct}%`,
+    transform: `rotate(${cell.rotation || 0}deg)`,
+    transformOrigin: 'center center',
   }
 }
 
@@ -346,15 +415,20 @@ function onCellPointerMove(index, event) {
   const metrics = cellMetrics(cell, index)
   if (!metrics) return
   const rect = event.currentTarget.getBoundingClientRect()
-  const maxX = ((metrics.kx - 1) / 2) * rect.width
-  const maxY = ((metrics.ky - 1) / 2) * rect.height
+  // 屏幕像素位移换算到与格子同单位，再投影到图片局部坐标，拖动方向跟随旋转
+  const dxUnits = ((event.clientX - panState.startX) * metrics.cellWidth) / rect.width
+  const dyUnits = ((event.clientY - panState.startY) * metrics.cellHeight) / rect.height
+  const { dPanX, dPanY } = screenDeltaToLocalPan(
+    dxUnits,
+    dyUnits,
+    metrics.panX,
+    metrics.panY,
+    metrics.cos,
+    metrics.sin,
+  )
   grabbingIndex.value = index
-  if (maxX > 0) {
-    cell.pan.x = clamp(panState.panX + (event.clientX - panState.startX) / maxX, -1, 1)
-  }
-  if (maxY > 0) {
-    cell.pan.y = clamp(panState.panY + (event.clientY - panState.startY) / maxY, -1, 1)
-  }
+  cell.pan.x = clamp(panState.panX + dPanX, -1, 1)
+  cell.pan.y = clamp(panState.panY + dPanY, -1, 1)
 }
 
 function onCellPointerUp(index, event) {
@@ -362,6 +436,44 @@ function onCellPointerUp(index, event) {
   panState.index = -1
   panState.pointerId = null
   grabbingIndex.value = -1
+}
+
+// 画布内拖拽旋转：以格子中心为轴，手柄绕中心的角度增量叠加到起始角度
+function onCellRotateDown(index, event) {
+  event.stopPropagation()
+  const cell = cells.value[index]
+  if (!cell || !cell.materialId || event.button !== 0) return
+  const rect = event.currentTarget.parentElement.getBoundingClientRect()
+  rotateState.pointerId = event.pointerId
+  rotateState.index = index
+  rotateState.centerX = rect.left + rect.width / 2
+  rotateState.centerY = rect.top + rect.height / 2
+  rotateState.startAngle = pointerAngle(event.clientX, event.clientY)
+  rotateState.startRotation = cell.rotation || 0
+  event.currentTarget.setPointerCapture(event.pointerId)
+}
+
+function onCellRotateMove(index, event) {
+  if (rotateState.index !== index || event.pointerId !== rotateState.pointerId) return
+  const cell = cells.value[index]
+  if (!cell) return
+  const delta = pointerAngle(event.clientX, event.clientY) - rotateState.startAngle
+  let rotation = normalizeAngle(rotateState.startRotation + delta)
+  // 接近 90° 整数倍时吸附，方便转正
+  const snap = Math.round(rotation / 90) * 90
+  if (Math.abs(rotation - snap) <= 4) rotation = normalizeAngle(snap)
+  cell.rotation = rotation
+  clampPan(cell, index)
+}
+
+function onCellRotateUp(index, event) {
+  if (rotateState.index !== index || event.pointerId !== rotateState.pointerId) return
+  rotateState.index = -1
+  rotateState.pointerId = null
+}
+
+function pointerAngle(clientX, clientY) {
+  return (Math.atan2(clientY - rotateState.centerY, clientX - rotateState.centerX) * 180) / Math.PI
 }
 
 function onCellWheel(index, event) {
@@ -420,13 +532,22 @@ function composeCollage() {
         width: rect.w * width - gapPx,
         height: rect.h * height - gapPx,
       },
-      { zoom: cell.scale, panX: cell.pan.x, panY: cell.pan.y },
+      { zoom: cell.scale, panX: cell.pan.x, panY: cell.pan.y, rotation: cell.rotation || 0 },
     )
   })
   return canvas
 }
 
-function resetAll() {
+async function resetAll() {
+  try {
+    await ElMessageBox.confirm('确定清空当前拼图的全部素材与排版吗？此操作不可撤销。', '清空', {
+      type: 'warning',
+      confirmButtonText: '确认清空',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
   materials.value.forEach((material) => URL.revokeObjectURL(material.url))
   materials.value = []
   // 先清空格子再套模板，避免残留已释放的 materialId
@@ -469,7 +590,7 @@ async function onPickFromLibrary(items) {
       <div>
         <h1>单图拼接</h1>
         <p class="lede">
-          先上传素材，再挑一个宫格模板，把图片点击或拖进格子里。格内可拖动、滚轮缩放，选出图片最好的一面后导出。
+          先上传素材，再挑一个宫格模板，把图片点击或拖进格子里。格内可拖动、滚轮缩放、旋转调整，选出图片最好的一面后导出。
         </p>
       </div>
     </header>
@@ -534,6 +655,19 @@ async function onPickFromLibrary(items) {
               />
               <span v-else class="cell-empty">点击或拖入图片</span>
               <span class="cell-index">{{ index + 1 }}</span>
+              <button
+                v-if="selectedCell === index && materialOf(cell)"
+                type="button"
+                class="rotate-handle"
+                title="按住拖拽旋转图片"
+                aria-label="拖拽旋转"
+                @pointerdown.stop.prevent="onCellRotateDown(index, $event)"
+                @pointermove="onCellRotateMove(index, $event)"
+                @pointerup="onCellRotateUp(index, $event)"
+                @pointercancel="onCellRotateUp(index, $event)"
+                @click.stop
+                @dblclick.stop
+              ></button>
             </div>
           </div>
         </div>
@@ -542,7 +676,7 @@ async function onPickFromLibrary(items) {
             模板 {{ currentTemplate.name }} · 画布 {{ currentTemplate.ratioLabel }} ·
             已填 {{ filledCount }}/{{ cells.length }} 格
           </span>
-          <span v-if="hasContent">滚轮缩放 · 拖动平移 · 双击复位本格</span>
+          <span v-if="hasContent">滚轮缩放 · 拖动平移 · 拖格子右下角手柄旋转 · 双击复位本格</span>
         </div>
       </div>
 
@@ -627,6 +761,16 @@ async function onPickFromLibrary(items) {
             <span>{{ selectedZoom }}%</span>
           </div>
           <el-slider v-model="selectedZoom" :min="100" :max="500" :step="5" />
+          <div class="field-label">
+            <span>第 {{ selectedCell + 1 }} 格旋转</span>
+            <span>{{ selectedRotation }}°</span>
+          </div>
+          <el-slider v-model="selectedRotation" :min="-180" :max="180" :step="1" />
+          <div class="cell-actions">
+            <el-button size="small" @click="rotateSelected(-90)">左转 90°</el-button>
+            <el-button size="small" @click="rotateSelected(90)">右转 90°</el-button>
+            <el-button size="small" @click="rotateSelected(180)">翻转 180°</el-button>
+          </div>
           <div class="cell-actions">
             <el-button size="small" @click="resetCellView(selectedCell)">复位本格</el-button>
             <el-button size="small" @click="clearCell(selectedCell)">清空此格</el-button>

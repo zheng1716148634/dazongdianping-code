@@ -1,6 +1,6 @@
 <script setup>
 import { computed, onActivated, onBeforeUnmount, onMounted, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
 import {
   canvasToBlob,
@@ -100,7 +100,16 @@ async function exportImage(format) {
   }
 }
 
-function resetAll() {
+async function resetAll() {
+  try {
+    await ElMessageBox.confirm('确定清空当前图片与倒影设置吗？此操作不可撤销。', '清空', {
+      type: 'warning',
+      confirmButtonText: '确认清空',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
   revoke(sourceUrl.value)
   sourceImage.value = null
   sourceUrl.value = ''

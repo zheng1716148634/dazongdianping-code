@@ -1,8 +1,16 @@
 <script setup>
 import { computed, onBeforeUnmount, ref } from 'vue'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { UploadFilled } from '@element-plus/icons-vue'
-import { canvasToBlob, downloadBlob, drawImageCover, flattenOnWhite } from '../utils/composeImage'
+import {
+  canvasToBlob,
+  computeCoverMetrics,
+  downloadBlob,
+  drawImageCover,
+  flattenOnWhite,
+  localPanToOffset,
+  screenDeltaToLocalPan,
+} from '../utils/composeImage'
 import { blobToFile } from '../utils/imageHandoff'
 import MaterialPicker from './MaterialPicker.vue'
 
@@ -28,6 +36,7 @@ const selectedSlot = ref(-1)
 const dragOver = ref('')
 const grabbing = ref('')
 const panState = { pointerId: null, key: '', startX: 0, startY: 0, panX: 0, panY: 0 }
+const rotateState = { pointerId: null, key: '', centerX: 0, centerY: 0, startAngle: 0, startRotation: 0 }
 
 const currentAspect = computed(
   () => ASPECTS.find((item) => item.key === aspectKey.value) || ASPECTS[0],
@@ -51,6 +60,34 @@ const selectedZoom = computed({
     clampPan(slot)
   },
 })
+
+const selectedRotation = computed({
+  get() {
+    const slot = currentSlot()
+    const material = slot ? materialMap.value[slot.materialId] : null
+    return slot && material ? Math.round(slot.rotation || 0) : 0
+  },
+  set(value) {
+    const slot = currentSlot()
+    if (!slot) return
+    slot.rotation = normalizeAngle(value)
+    clampPan(slot)
+  },
+})
+
+// 90° 快捷旋转：在当前角度上叠加并归一化到 -180~180
+function rotateSelectedSlot(deg) {
+  const slot = currentSlot()
+  if (!slot || !slot.materialId) return
+  slot.rotation = normalizeAngle((slot.rotation || 0) + deg)
+  clampPan(slot)
+}
+
+function normalizeAngle(value) {
+  const deg = Number(value)
+  if (!Number.isFinite(deg)) return 0
+  return (((deg + 180) % 360) + 360) % 360 - 180
+}
 
 function currentSlot() {
   const pair = pairs.value[selectedPair.value]
@@ -124,8 +161,13 @@ function generatePairs() {
         if (!material) return emptySlot()
         const old = previous.get(material.id)
         return old
-          ? { materialId: material.id, scale: old.scale, pan: { ...old.pan } }
-          : { materialId: material.id, scale: 1, pan: { x: 0, y: 0 } }
+          ? {
+              materialId: material.id,
+              scale: old.scale,
+              rotation: old.rotation || 0,
+              pan: { ...old.pan },
+            }
+          : { materialId: material.id, scale: 1, rotation: 0, pan: { x: 0, y: 0 } }
       }),
     })
   }
@@ -137,7 +179,7 @@ function generatePairs() {
 }
 
 function emptySlot() {
-  return { materialId: null, scale: 1, pan: { x: 0, y: 0 } }
+  return { materialId: null, scale: 1, rotation: 0, pan: { x: 0, y: 0 } }
 }
 
 function materialOf(slot) {
@@ -160,6 +202,7 @@ function selectSlot(pairIndex, slotIndex) {
 function resetSlot(pairIndex, slotIndex) {
   const slot = pairs.value[pairIndex].slots[slotIndex]
   slot.scale = 1
+  slot.rotation = 0
   slot.pan.x = 0
   slot.pan.y = 0
 }
@@ -187,7 +230,7 @@ function addPair() {
   })
 }
 
-// 与导出同一套 cover 数学：fracW/fracH 都以画布宽度为单位
+// 与导出同一套 cover 数学：fracW/fracH 都以画布宽度为单位（含旋转）
 function slotMetrics(slot) {
   const material = materialOf(slot)
   if (!material) return null
@@ -196,10 +239,15 @@ function slotMetrics(slot) {
   const fracW = 1 - g
   const fracH = 0.5 / aspect - g
   const image = material.image
-  const imgRatio = image.naturalWidth / image.naturalHeight
-  const kx = Math.max(1, (fracH * imgRatio) / fracW) * slot.scale
-  const ky = Math.max(1, fracW / (fracH * imgRatio)) * slot.scale
-  return { image, kx, ky }
+  const m = computeCoverMetrics({
+    cellWidth: fracW,
+    cellHeight: fracH,
+    imgW: image.naturalWidth,
+    imgH: image.naturalHeight,
+    zoom: slot.scale,
+    rotation: slot.rotation || 0,
+  })
+  return { image, cellWidth: fracW, cellHeight: fracH, ...m }
 }
 
 function slotBoxStyle(slotIndex) {
@@ -216,20 +264,25 @@ function slotBoxStyle(slotIndex) {
 function slotImageStyle(slot) {
   const metrics = slotMetrics(slot)
   if (!metrics) return {}
-  const { kx, ky } = metrics
+  const { kx, ky, panX, panY, cos, sin, cellWidth, cellHeight } = metrics
+  const { ox, oy } = localPanToOffset(slot.pan.x, slot.pan.y, panX, panY, cos, sin)
+  const widthPct = kx * 100
+  const heightPct = ky * 100
   return {
-    left: `${(((1 - kx) * (1 - slot.pan.x)) / 2) * 100}%`,
-    top: `${(((1 - ky) * (1 - slot.pan.y)) / 2) * 100}%`,
-    width: `${kx * 100}%`,
-    height: `${ky * 100}%`,
+    left: `${50 + (ox / cellWidth) * 100 - widthPct / 2}%`,
+    top: `${50 + (oy / cellHeight) * 100 - heightPct / 2}%`,
+    width: `${widthPct}%`,
+    height: `${heightPct}%`,
+    transform: `rotate(${slot.rotation || 0}deg)`,
+    transformOrigin: 'center center',
   }
 }
 
 function clampPan(slot) {
   const metrics = slotMetrics(slot)
   if (!metrics) return
-  slot.pan.x = metrics.kx > 1 ? clamp(slot.pan.x, -1, 1) : 0
-  slot.pan.y = metrics.ky > 1 ? clamp(slot.pan.y, -1, 1) : 0
+  slot.pan.x = metrics.panX > 0 ? clamp(slot.pan.x, -1, 1) : 0
+  slot.pan.y = metrics.panY > 0 ? clamp(slot.pan.y, -1, 1) : 0
 }
 
 function onSlotPointerDown(pairIndex, slotIndex, event) {
@@ -252,15 +305,20 @@ function onSlotPointerMove(pairIndex, slotIndex, event) {
   const metrics = slotMetrics(slot)
   if (!metrics) return
   const rect = event.currentTarget.getBoundingClientRect()
-  const maxX = ((metrics.kx - 1) / 2) * rect.width
-  const maxY = ((metrics.ky - 1) / 2) * rect.height
+  // 屏幕像素位移换算到与格子同单位，再投影到图片局部坐标，拖动方向跟随旋转
+  const dxUnits = ((event.clientX - panState.startX) * metrics.cellWidth) / rect.width
+  const dyUnits = ((event.clientY - panState.startY) * metrics.cellHeight) / rect.height
+  const { dPanX, dPanY } = screenDeltaToLocalPan(
+    dxUnits,
+    dyUnits,
+    metrics.panX,
+    metrics.panY,
+    metrics.cos,
+    metrics.sin,
+  )
   grabbing.value = key
-  if (maxX > 0) {
-    slot.pan.x = clamp(panState.panX + (event.clientX - panState.startX) / maxX, -1, 1)
-  }
-  if (maxY > 0) {
-    slot.pan.y = clamp(panState.panY + (event.clientY - panState.startY) / maxY, -1, 1)
-  }
+  slot.pan.x = clamp(panState.panX + dPanX, -1, 1)
+  slot.pan.y = clamp(panState.panY + dPanY, -1, 1)
 }
 
 function onSlotPointerUp(pairIndex, slotIndex, event) {
@@ -268,6 +326,45 @@ function onSlotPointerUp(pairIndex, slotIndex, event) {
   panState.key = ''
   panState.pointerId = null
   grabbing.value = ''
+}
+
+// 画布内拖拽旋转：以格子中心为轴，手柄绕中心的角度增量叠加到起始角度
+function onSlotRotateDown(pairIndex, slotIndex, event) {
+  event.stopPropagation()
+  const slot = pairs.value[pairIndex].slots[slotIndex]
+  if (!slot || !slot.materialId || event.button !== 0) return
+  const rect = event.currentTarget.parentElement.getBoundingClientRect()
+  rotateState.pointerId = event.pointerId
+  rotateState.key = slotKey(pairIndex, slotIndex)
+  rotateState.centerX = rect.left + rect.width / 2
+  rotateState.centerY = rect.top + rect.height / 2
+  rotateState.startAngle = pointerAngle(event.clientX, event.clientY)
+  rotateState.startRotation = slot.rotation || 0
+  event.currentTarget.setPointerCapture(event.pointerId)
+}
+
+function onSlotRotateMove(pairIndex, slotIndex, event) {
+  const key = slotKey(pairIndex, slotIndex)
+  if (rotateState.key !== key || event.pointerId !== rotateState.pointerId) return
+  const slot = pairs.value[pairIndex].slots[slotIndex]
+  if (!slot) return
+  const delta = pointerAngle(event.clientX, event.clientY) - rotateState.startAngle
+  let rotation = normalizeAngle(rotateState.startRotation + delta)
+  // 接近 90° 整数倍时吸附，方便转正
+  const snap = Math.round(rotation / 90) * 90
+  if (Math.abs(rotation - snap) <= 4) rotation = normalizeAngle(snap)
+  slot.rotation = rotation
+  clampPan(slot)
+}
+
+function onSlotRotateUp(pairIndex, slotIndex, event) {
+  if (rotateState.key !== slotKey(pairIndex, slotIndex) || event.pointerId !== rotateState.pointerId) return
+  rotateState.key = ''
+  rotateState.pointerId = null
+}
+
+function pointerAngle(clientX, clientY) {
+  return (Math.atan2(clientY - rotateState.centerY, clientX - rotateState.centerX) * 180) / Math.PI
 }
 
 function onSlotWheel(pairIndex, slotIndex, event) {
@@ -300,6 +397,7 @@ function onSlotDrop(pairIndex, slotIndex, event) {
   pairs.value[pairIndex].slots[slotIndex] = {
     materialId: material.id,
     scale: 1,
+    rotation: 0,
     pan: { x: 0, y: 0 },
   }
   selectSlot(pairIndex, slotIndex)
@@ -317,6 +415,7 @@ function pickMaterial(material) {
       pairs.value[pairIndex].slots[slotIndex] = {
         materialId: material.id,
         scale: 1,
+        rotation: 0,
         pan: { x: 0, y: 0 },
       }
       selectSlot(pairIndex, slotIndex)
@@ -328,6 +427,7 @@ function pickMaterial(material) {
     pair.slots[selectedSlot.value] = {
       materialId: material.id,
       scale: 1,
+      rotation: 0,
       pan: { x: 0, y: 0 },
     }
     return
@@ -448,7 +548,7 @@ function composePair(pair) {
         width: width - gapPx,
         height: height * 0.5 - gapPx,
       },
-      { zoom: slot.scale, panX: slot.pan.x, panY: slot.pan.y },
+      { zoom: slot.scale, panX: slot.pan.x, panY: slot.pan.y, rotation: slot.rotation || 0 },
     )
   })
 
@@ -497,7 +597,7 @@ async function onPickFromLibrary(items) {
       <div>
         <h1>批量拼接</h1>
         <p class="lede">
-          一次上传多张素材，一键按顺序两两上下拼成一组。每组里的上、下格都能拖动、滚轮缩放，挑出图片最好的一面后再单张或批量导出。
+          一次上传多张素材，一键按顺序两两上下拼成一组。每组里的上、下格都能拖动、滚轮缩放、旋转调整，挑出图片最好的一面后再单张或批量导出。
         </p>
       </div>
     </header>
@@ -588,6 +688,19 @@ async function onPickFromLibrary(items) {
                     draggable="false"
                   />
                   <span v-else class="pair-empty">{{ slotIndex === 0 ? '上格' : '下格' }} · 拖入图片</span>
+                  <button
+                    v-if="selectedPair === pairIndex && selectedSlot === slotIndex && materialOf(slot)"
+                    type="button"
+                    class="rotate-handle"
+                    title="按住拖拽旋转图片"
+                    aria-label="拖拽旋转"
+                    @pointerdown.stop.prevent="onSlotRotateDown(pairIndex, slotIndex, $event)"
+                    @pointermove="onSlotRotateMove(pairIndex, slotIndex, $event)"
+                    @pointerup="onSlotRotateUp(pairIndex, slotIndex, $event)"
+                    @pointercancel="onSlotRotateUp(pairIndex, slotIndex, $event)"
+                    @click.stop
+                    @dblclick.stop
+                  ></button>
                 </div>
               </div>
             </article>
@@ -610,7 +723,7 @@ async function onPickFromLibrary(items) {
             {{ totalPairs ? `共 ${totalPairs} 组 · 可导出 ${exportablePairs} 组` : '等待上传' }} · 比例
             {{ currentAspect.label }}
           </span>
-          <span v-if="totalPairs">点选格子后滚轮缩放 · 拖动平移 · 双击复位</span>
+          <span v-if="totalPairs">点选格子后滚轮缩放 · 拖动平移 · 拖格子右下角手柄旋转 · 双击复位</span>
         </div>
       </div>
 
@@ -685,6 +798,16 @@ async function onPickFromLibrary(items) {
             <span>{{ selectedZoom }}%</span>
           </div>
           <el-slider v-model="selectedZoom" :min="100" :max="500" :step="5" />
+          <div class="field-label">
+            <span>第 {{ selectedSlot + 1 }} 格（{{ selectedSlot === 0 ? '上' : '下' }}）旋转</span>
+            <span>{{ selectedRotation }}°</span>
+          </div>
+          <el-slider v-model="selectedRotation" :min="-180" :max="180" :step="1" />
+          <div class="cell-actions">
+            <el-button size="small" @click="rotateSelectedSlot(-90)">左转 90°</el-button>
+            <el-button size="small" @click="rotateSelectedSlot(90)">右转 90°</el-button>
+            <el-button size="small" @click="rotateSelectedSlot(180)">翻转 180°</el-button>
+          </div>
           <div class="cell-actions">
             <el-button size="small" @click="resetSlot(selectedPair, selectedSlot)">复位本格</el-button>
             <el-button size="small" @click="clearSlot(selectedPair, selectedSlot)">清空此格</el-button>

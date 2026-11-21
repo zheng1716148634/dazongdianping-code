@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { handleFetch, handleImage } from './server/dianping.js'
 import { handleScrapling, isScraplingRoute } from './server/scraplingProxy.js'
+import { scraplingSidecar } from './server/scraplingSidecar.js'
 
 // 本地 dev / preview 的接口层与 Vercel Functions（api/ 目录）共用同一套实现：
 // /api/dp/*        —— 点评抓取代理（Node 原生 fetch + 手动 Cookie）
@@ -66,9 +67,10 @@ process.on('uncaughtException', (err) => {
 })
 
 export default defineConfig({
-  plugins: [vue(), apiMiddleware()],
+  plugins: [vue(), apiMiddleware(), scraplingSidecar()],
   server: {
     port: 5173,
+    host: true, // 监听 0.0.0.0，允许局域网内其它设备访问
     open: false,
     watch: { ignored: WATCH_IGNORED },
   },

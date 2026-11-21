@@ -723,7 +723,7 @@ async function onPickFromLibrary(items) {
             {{ totalPairs ? `共 ${totalPairs} 组 · 可导出 ${exportablePairs} 组` : '等待上传' }} · 比例
             {{ currentAspect.label }}
           </span>
-          <span v-if="totalPairs">点选格子后滚轮缩放 · 拖动平移 · 拖格子右下角手柄旋转 · 双击复位</span>
+          <span v-if="totalPairs">点选格子后滚轮缩放 · 拖动平移 · 拖格子右上角手柄旋转 · 双击复位</span>
         </div>
       </div>
 

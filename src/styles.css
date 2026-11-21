@@ -700,11 +700,11 @@ h1 {
   pointer-events: none;
 }
 
-/* 画布内拖拽旋转手柄：格子 overflow:hidden，手柄贴右下角放在格子内侧 */
+/* 画布内拖拽旋转手柄：格子 overflow:hidden，手柄贴右上角放在格子内侧 */
 .rotate-handle {
   position: absolute;
   right: 8px;
-  bottom: 8px;
+  top: 8px;
   z-index: 6;
   width: 24px;
   height: 24px;

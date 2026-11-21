@@ -676,7 +676,7 @@ async function onPickFromLibrary(items) {
             模板 {{ currentTemplate.name }} · 画布 {{ currentTemplate.ratioLabel }} ·
             已填 {{ filledCount }}/{{ cells.length }} 格
           </span>
-          <span v-if="hasContent">滚轮缩放 · 拖动平移 · 拖格子右下角手柄旋转 · 双击复位本格</span>
+          <span v-if="hasContent">滚轮缩放 · 拖动平移 · 拖格子右上角手柄旋转 · 双击复位本格</span>
         </div>
       </div>
 

@@ -403,10 +403,20 @@ function onSlotDrop(pairIndex, slotIndex, event) {
   selectSlot(pairIndex, slotIndex)
 }
 
-// 点击素材：优先填入有双拼时的第一个空格，否则替换当前选中格
+// 点击素材：优先填入选中的格子（选中格有图则替换），没选中格时才找第一个空格
 function pickMaterial(material) {
   if (!pairs.value.length) {
     ElMessage.info('先点「一键上下双拼」生成双拼组')
+    return
+  }
+  const pair = pairs.value[selectedPair.value]
+  if (pair && selectedSlot.value >= 0) {
+    pair.slots[selectedSlot.value] = {
+      materialId: material.id,
+      scale: 1,
+      rotation: 0,
+      pan: { x: 0, y: 0 },
+    }
     return
   }
   for (let pairIndex = 0; pairIndex < pairs.value.length; pairIndex += 1) {
@@ -421,16 +431,6 @@ function pickMaterial(material) {
       selectSlot(pairIndex, slotIndex)
       return
     }
-  }
-  const pair = pairs.value[selectedPair.value]
-  if (pair && selectedSlot.value >= 0) {
-    pair.slots[selectedSlot.value] = {
-      materialId: material.id,
-      scale: 1,
-      rotation: 0,
-      pan: { x: 0, y: 0 },
-    }
-    return
   }
   ElMessage.info('双拼格已填满，先点选要替换的格子再点素材，或把素材直接拖进格子')
 }

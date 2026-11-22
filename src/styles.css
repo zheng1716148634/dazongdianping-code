@@ -894,21 +894,29 @@ h1 {
 
 .pair-card-head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 6px 8px;
   font-size: 12px;
   color: var(--muted);
 }
 
 .pair-card-title {
+  flex: 1 1 auto;
+  min-width: 0;
   font-weight: 600;
   letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .pair-card-actions {
   display: flex;
+  flex: 0 0 auto;
   gap: 6px;
+  margin-left: auto;
 }
 
 .pair-mini {
@@ -919,6 +927,7 @@ h1 {
   color: var(--muted);
   font: inherit;
   font-size: 12px;
+  white-space: nowrap;
   cursor: pointer;
   transition: color 140ms ease, border-color 140ms ease, transform 160ms var(--ease);
 }

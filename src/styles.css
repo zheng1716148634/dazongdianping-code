@@ -914,13 +914,15 @@ h1 {
 
 .pair-card-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   flex: 0 0 auto;
-  gap: 6px;
+  gap: 5px;
   margin-left: auto;
 }
 
 .pair-mini {
-  padding: 3px 9px;
+  padding: 3px 6px;
   border: 1px solid var(--edge);
   border-radius: 2px 8px 3px 7px;
   background: transparent;
@@ -3061,6 +3063,31 @@ h1 {
 
 .pair-export-btns .el-button + .el-button {
   margin-left: 0;
+}
+
+/* 撤回上一步：用醒目的红色突出，误操作时一眼能找到 */
+.pair-export-btns .pair-undo-btn {
+  border-color: #d92b2b !important;
+  background: #d92b2b !important;
+  color: #fff8f6 !important;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: 0 4px 10px -4px rgba(217, 43, 43, 0.7);
+}
+
+.pair-export-btns .pair-undo-btn:hover:not(.is-disabled) {
+  border-color: #b81f1f !important;
+  background: #b81f1f !important;
+  color: #fff !important;
+  transform: translateY(-1px);
+}
+
+.pair-export-btns .pair-undo-btn.is-disabled {
+  border-color: var(--edge) !important;
+  background: transparent !important;
+  color: var(--muted) !important;
+  box-shadow: none;
+  opacity: 0.55;
 }
 
 /* ---------- AI 笔记改写 ---------- */

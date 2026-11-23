@@ -75,7 +75,6 @@ const sizeLabel = '1080 × 1440（3:4）'
 const canGenerate = computed(
   () =>
     !!reference.value &&
-    !busy.value &&
     !!promptDraft.value.trim() &&
     !!activeConfig.value?.baseUrl.trim() &&
     !!activeConfig.value?.apiKey.trim(),
@@ -500,7 +499,6 @@ function pickImageModels(ids) {
 }
 
 function generate() {
-  if (busy.value) return
   if (!reference.value) {
     ElMessage.warning('先上传一张美食照片作为参考图')
     return
@@ -645,7 +643,7 @@ function loadImage(src) {
         <div class="pair-export-bar">
           <span class="pair-export-info">
             {{ busy
-              ? '正在生成…'
+              ? `正在生成 ${pendingJobs.length} 个任务…可继续点生成配图`
               : previewingRecord
                 ? `生成结果 · ${activeRecord.model} · ${activeRecord.size}`
                 : reference
@@ -653,8 +651,8 @@ function loadImage(src) {
                   : '先上传一张美食照片作为参考图' }}
           </span>
           <div class="pair-export-btns">
-            <el-button type="primary" size="small" :disabled="!canGenerate" :loading="busy" @click="generate">
-              {{ busy ? '生成中…' : '生成配图' }}
+            <el-button type="primary" size="small" :disabled="!canGenerate" @click="generate">
+              生成配图{{ pendingJobs.length ? `（${pendingJobs.length} 个进行中）` : '' }}
             </el-button>
             <el-button size="small" :disabled="!previewingRecord" @click="downloadActive">下载当前图</el-button>
             <el-button size="small" :disabled="!previewingRecord" @click="sendActiveToReflection">带到倒影合成</el-button>
@@ -694,7 +692,7 @@ function loadImage(src) {
 
             <div v-if="busy" class="hero-loading">
               <span class="hero-spinner"></span>
-              <span>正在生成…可以切到别的页面，结果会自动存入生成记录</span>
+              <span>{{ pendingJobs.length }} 个任务生成中，可继续点「生成配图」并行提交</span>
             </div>
           </div>
         </div>

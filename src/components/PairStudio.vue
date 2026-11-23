@@ -38,6 +38,90 @@ const grabbing = ref('')
 const panState = { pointerId: null, key: '', startX: 0, startY: 0, panX: 0, panY: 0 }
 const rotateState = { pointerId: null, key: '', centerX: 0, centerY: 0, startAngle: 0, startRotation: 0 }
 
+// 撤回栈：每次改动前记录一份双拼快照，误操作后可退回上一步
+const HISTORY_LIMIT = 50
+const history = ref([])
+let pendingHistory = null
+let lastRecordAt = 0
+
+function buildSnapshot() {
+  return {
+    pairs: pairs.value.map((pair) => ({
+      id: pair.id,
+      label: pair.label,
+      slots: pair.slots.map((slot) => ({
+        materialId: slot.materialId,
+        scale: slot.scale,
+        rotation: slot.rotation || 0,
+        pan: { x: slot.pan.x, y: slot.pan.y },
+      })),
+    })),
+    selectedPair: selectedPair.value,
+    selectedSlot: selectedSlot.value,
+  }
+}
+
+function pushSnapshot(snapshot) {
+  const last = history.value[history.value.length - 1]
+  if (last && JSON.stringify(last.pairs) === JSON.stringify(snapshot.pairs)) return
+  history.value.push(snapshot)
+  if (history.value.length > HISTORY_LIMIT) history.value.shift()
+}
+
+function recordHistory() {
+  lastRecordAt = performance.now()
+  pushSnapshot(buildSnapshot())
+}
+
+// 连续操作（滚轮缩放、拖滑块）只按节奏记一次，避免撤回要退很多小步
+function recordHistorySoon() {
+  const now = performance.now()
+  if (now - lastRecordAt < 400) return
+  recordHistory()
+}
+
+function capturePendingHistory() {
+  pendingHistory = buildSnapshot()
+}
+
+function commitPendingHistory() {
+  if (!pendingHistory) return
+  pushSnapshot(pendingHistory)
+  pendingHistory = null
+  lastRecordAt = performance.now()
+}
+
+function undoLast() {
+  const snapshot = history.value.pop()
+  if (!snapshot) return
+  pendingHistory = null
+  lastRecordAt = 0
+  grabbing.value = ''
+  panState.key = ''
+  panState.pointerId = null
+  rotateState.key = ''
+  rotateState.pointerId = null
+  dragOver.value = ''
+  pairs.value = snapshot.pairs.map((pair) => ({
+    ...pair,
+    slots: pair.slots.map((slot) => ({
+      ...slot,
+      // 素材若已被删除，不能还原，按空位处理
+      materialId: materialMap.value[slot.materialId] ? slot.materialId : null,
+      pan: { ...slot.pan },
+    })),
+  }))
+  const pair = pairs.value[snapshot.selectedPair]
+  if (pair && pair.slots[snapshot.selectedSlot]) {
+    selectedPair.value = snapshot.selectedPair
+    selectedSlot.value = snapshot.selectedSlot
+  } else {
+    selectedPair.value = -1
+    selectedSlot.value = -1
+  }
+  ElMessage.info('已撤回上一步')
+}
+
 const currentAspect = computed(
   () => ASPECTS.find((item) => item.key === aspectKey.value) || ASPECTS[0],
 )
@@ -56,6 +140,7 @@ const selectedZoom = computed({
   set(value) {
     const slot = currentSlot()
     if (!slot) return
+    recordHistorySoon()
     slot.scale = clamp(value / 100, 1, 5)
     clampPan(slot)
   },
@@ -70,6 +155,7 @@ const selectedRotation = computed({
   set(value) {
     const slot = currentSlot()
     if (!slot) return
+    recordHistorySoon()
     slot.rotation = normalizeAngle(value)
     clampPan(slot)
   },
@@ -79,6 +165,7 @@ const selectedRotation = computed({
 function rotateSelectedSlot(deg) {
   const slot = currentSlot()
   if (!slot || !slot.materialId) return
+  recordHistory()
   slot.rotation = normalizeAngle((slot.rotation || 0) + deg)
   clampPan(slot)
 }
@@ -143,6 +230,7 @@ function generatePairs() {
     ElMessage.info('先上传图片素材')
     return
   }
+  recordHistory()
   const previous = new Map()
   pairs.value.forEach((pair) => {
     pair.slots.forEach((slot) => {
@@ -201,6 +289,7 @@ function selectSlot(pairIndex, slotIndex) {
 
 function resetSlot(pairIndex, slotIndex) {
   const slot = pairs.value[pairIndex].slots[slotIndex]
+  recordHistory()
   slot.scale = 1
   slot.rotation = 0
   slot.pan.x = 0
@@ -208,6 +297,7 @@ function resetSlot(pairIndex, slotIndex) {
 }
 
 function clearSlot(pairIndex, slotIndex) {
+  recordHistory()
   pairs.value[pairIndex].slots[slotIndex] = emptySlot()
   if (selectedPair.value === pairIndex && selectedSlot.value === slotIndex) {
     selectedPair.value = -1
@@ -216,13 +306,27 @@ function clearSlot(pairIndex, slotIndex) {
 }
 
 function removePair(pairIndex) {
+  recordHistory()
   pairs.value.splice(pairIndex, 1)
   selectedPair.value = -1
   selectedSlot.value = -1
 }
 
+// 单组上下互换：整组 slot 对象对调，图片的缩放/旋转/平移随素材一起过去
+function swapPair(pairIndex) {
+  const pair = pairs.value[pairIndex]
+  if (!pair) return
+  recordHistory()
+  pair.slots = [pair.slots[1], pair.slots[0]]
+  // 选中的是这一组的格子时跟着换到对应位置，避免右侧面板指向另一张图
+  if (selectedPair.value === pairIndex && selectedSlot.value >= 0) {
+    selectedSlot.value = selectedSlot.value === 0 ? 1 : 0
+  }
+}
+
 // 手动新增一组空白双拼模板，可在组内拖图/点素材填充
 function addPair() {
+  recordHistory()
   pairs.value.push({
     id: `pair-${Date.now()}-manual`,
     label: `双拼 ${pairs.value.length + 1}`,
@@ -289,6 +393,7 @@ function onSlotPointerDown(pairIndex, slotIndex, event) {
   selectSlot(pairIndex, slotIndex)
   const slot = pairs.value[pairIndex].slots[slotIndex]
   if (!slot.materialId || event.button !== 0) return
+  capturePendingHistory()
   panState.pointerId = event.pointerId
   panState.key = slotKey(pairIndex, slotIndex)
   panState.startX = event.clientX
@@ -316,6 +421,7 @@ function onSlotPointerMove(pairIndex, slotIndex, event) {
     metrics.cos,
     metrics.sin,
   )
+  commitPendingHistory()
   grabbing.value = key
   slot.pan.x = clamp(panState.panX + dPanX, -1, 1)
   slot.pan.y = clamp(panState.panY + dPanY, -1, 1)
@@ -323,6 +429,7 @@ function onSlotPointerMove(pairIndex, slotIndex, event) {
 
 function onSlotPointerUp(pairIndex, slotIndex, event) {
   if (panState.key !== slotKey(pairIndex, slotIndex) || event.pointerId !== panState.pointerId) return
+  pendingHistory = null
   panState.key = ''
   panState.pointerId = null
   grabbing.value = ''
@@ -334,6 +441,7 @@ function onSlotRotateDown(pairIndex, slotIndex, event) {
   const slot = pairs.value[pairIndex].slots[slotIndex]
   if (!slot || !slot.materialId || event.button !== 0) return
   const rect = event.currentTarget.parentElement.getBoundingClientRect()
+  capturePendingHistory()
   rotateState.pointerId = event.pointerId
   rotateState.key = slotKey(pairIndex, slotIndex)
   rotateState.centerX = rect.left + rect.width / 2
@@ -348,6 +456,7 @@ function onSlotRotateMove(pairIndex, slotIndex, event) {
   if (rotateState.key !== key || event.pointerId !== rotateState.pointerId) return
   const slot = pairs.value[pairIndex].slots[slotIndex]
   if (!slot) return
+  commitPendingHistory()
   const delta = pointerAngle(event.clientX, event.clientY) - rotateState.startAngle
   let rotation = normalizeAngle(rotateState.startRotation + delta)
   // 接近 90° 整数倍时吸附，方便转正
@@ -359,6 +468,7 @@ function onSlotRotateMove(pairIndex, slotIndex, event) {
 
 function onSlotRotateUp(pairIndex, slotIndex, event) {
   if (rotateState.key !== slotKey(pairIndex, slotIndex) || event.pointerId !== rotateState.pointerId) return
+  pendingHistory = null
   rotateState.key = ''
   rotateState.pointerId = null
 }
@@ -370,6 +480,7 @@ function pointerAngle(clientX, clientY) {
 function onSlotWheel(pairIndex, slotIndex, event) {
   const slot = pairs.value[pairIndex].slots[slotIndex]
   if (!slot.materialId) return
+  recordHistorySoon()
   const factor = event.deltaY < 0 ? 1.08 : 1 / 1.08
   slot.scale = clamp(slot.scale * factor, 1, 5)
   clampPan(slot)
@@ -394,6 +505,7 @@ function onSlotDrop(pairIndex, slotIndex, event) {
   dragOver.value = ''
   const material = materialMap.value[event.dataTransfer.getData('text/plain')]
   if (!material) return
+  recordHistory()
   pairs.value[pairIndex].slots[slotIndex] = {
     materialId: material.id,
     scale: 1,
@@ -411,6 +523,7 @@ function pickMaterial(material) {
   }
   const pair = pairs.value[selectedPair.value]
   if (pair && selectedSlot.value >= 0) {
+    recordHistory()
     pair.slots[selectedSlot.value] = {
       materialId: material.id,
       scale: 1,
@@ -422,6 +535,7 @@ function pickMaterial(material) {
   for (let pairIndex = 0; pairIndex < pairs.value.length; pairIndex += 1) {
     const slotIndex = pairs.value[pairIndex].slots.findIndex((slot) => !slot.materialId)
     if (slotIndex >= 0) {
+      recordHistory()
       pairs.value[pairIndex].slots[slotIndex] = {
         materialId: material.id,
         scale: 1,
@@ -562,6 +676,8 @@ function resetAll() {
   selectedPair.value = -1
   selectedSlot.value = -1
   gap.value = 0
+  history.value = []
+  pendingHistory = null
 }
 
 function loadImage(file) {
@@ -609,6 +725,14 @@ async function onPickFromLibrary(items) {
             {{ totalPairs ? `共 ${totalPairs} 组 · 可导出 ${exportablePairs} 组` : '等待上传' }}
           </span>
           <div class="pair-export-btns">
+            <el-button
+              class="pair-undo-btn"
+              size="small"
+              :disabled="!history.length"
+              @click="undoLast"
+            >
+              撤回上一步
+            </el-button>
             <el-button size="small" @click="addPair">新增模板</el-button>
             <el-button
               type="primary"
@@ -636,6 +760,15 @@ async function onPickFromLibrary(items) {
               <div class="pair-card-head">
                 <span class="pair-card-title">{{ pair.label }}</span>
                 <span class="pair-card-actions">
+                  <button
+                    type="button"
+                    class="pair-mini"
+                    title="上下互换这两张图"
+                    :disabled="!pairHasContent(pair)"
+                    @click="swapPair(pairIndex)"
+                  >
+                    互换
+                  </button>
                   <button
                     type="button"
                     class="pair-mini"

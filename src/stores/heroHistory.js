@@ -309,18 +309,19 @@ async function cropToThreeFour(blob) {
   }
 }
 
-// 参考图缩略图：让每条记录能看出「是哪张原图生成的」，压缩到 200px 内
+// 参考图缩略图：让每条记录能看出「是哪张原图生成的」，压缩到 1024px 内，
+// 保证「预览对比」里左侧原图有足够的清晰度（历史上限只有 200px，放大后很糊）
 async function makeThumb(file) {
   const url = URL.createObjectURL(file)
   try {
     const image = await loadImage(url)
-    const maxSide = 200
+    const maxSide = 1024
     const scale = Math.min(1, maxSide / Math.max(image.naturalWidth, image.naturalHeight))
     const canvas = document.createElement('canvas')
     canvas.width = Math.max(1, Math.round(image.naturalWidth * scale))
     canvas.height = Math.max(1, Math.round(image.naturalHeight * scale))
     canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height)
-    return await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.72))
+    return await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.82))
   } catch {
     return null
   } finally {

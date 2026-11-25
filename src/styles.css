@@ -3786,3 +3786,222 @@ h1 {
   height: auto;
   min-height: 170px;
 }
+
+/* ---------- 图片编辑 ---------- */
+
+.stage-editor {
+  padding: 16px;
+}
+
+.ed-canvas {
+  position: relative;
+  flex: none;
+  max-width: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  background: var(--sheet);
+  border-radius: 2px 16px 3px 12px;
+  box-shadow: var(--shadow);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.ed-base {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.ed-layer {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  touch-action: none;
+}
+
+.ed-layer:focus-visible {
+  outline: none;
+}
+
+.ed-layer.is-selected {
+  box-shadow: 0 0 0 1.5px var(--seal);
+}
+
+.ed-box {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+/* 尾巴与气泡底色同色，用 clip-path 裁成和导出一致的那个三角形 */
+.ed-tail {
+  position: absolute;
+  top: calc(100% - 1px);
+  z-index: 0;
+  clip-path: polygon(0 0, 100% 0, 22% 100%);
+}
+
+.ed-text {
+  position: relative;
+  z-index: 1;
+  white-space: pre;
+  text-align: center;
+  pointer-events: none;
+}
+
+.ed-handle {
+  position: absolute;
+  z-index: 3;
+  width: 13px;
+  height: 13px;
+  padding: 0;
+  background: var(--sheet);
+  border: 2px solid var(--seal);
+  border-radius: 50%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.ed-handle.is-resize {
+  right: 0;
+  bottom: 0;
+  transform: translate(50%, 50%);
+  cursor: nwse-resize;
+}
+
+.ed-handle.is-rotate {
+  top: -26px;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.ed-handle.is-rotate::before {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  width: 1.5px;
+  height: 18px;
+  background: var(--seal);
+  transform: translateX(-50%);
+}
+
+.ed-base-btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.ed-add-btn {
+  width: 100%;
+  margin-top: 8px;
+}
+
+.ed-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.ed-chip {
+  padding: 3px 10px;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12.5px;
+  background: rgba(var(--sheet-rgb), 0.7);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 160ms var(--ease), border-color 160ms var(--ease), background 160ms var(--ease);
+}
+
+.ed-chip:hover {
+  color: var(--seal);
+  background: rgba(var(--seal-rgb), 0.07);
+  border-color: rgba(var(--seal-rgb), 0.4);
+}
+
+.ed-groups {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.ed-group {
+  flex: 1 0 auto;
+  padding: 3px 0;
+  color: var(--muted);
+  font-family: inherit;
+  font-size: 12.5px;
+  background: none;
+  border: none;
+  border-bottom: 1.5px solid transparent;
+  cursor: pointer;
+}
+
+.ed-group.is-active {
+  color: var(--seal);
+  font-weight: 600;
+  border-bottom-color: var(--seal);
+}
+
+.ed-stickers {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(34px, 1fr));
+  gap: 6px;
+}
+
+.ed-sticker {
+  display: grid;
+  place-items: center;
+  height: 34px;
+  font-size: 19px;
+  line-height: 1;
+  background: rgba(var(--sheet-rgb), 0.6);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 140ms var(--ease), border-color 140ms var(--ease);
+}
+
+.ed-sticker:hover {
+  border-color: rgba(var(--seal-rgb), 0.45);
+  transform: translateY(-2px);
+}
+
+.ed-cell-btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.ed-cell-btns .el-button {
+  flex: 1 1 0;
+  margin-left: 0;
+}
+
+.ed-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ed-colors {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.ed-color-label {
+  color: var(--muted);
+  font-size: 12.5px;
+}

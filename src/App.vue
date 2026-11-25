@@ -7,6 +7,7 @@ import MaterialFetch from './components/MaterialFetch.vue'
 import CollageStudio from './components/CollageStudio.vue'
 import PairStudio from './components/PairStudio.vue'
 import HeroImageStudio from './components/HeroImageStudio.vue'
+import ImageEditorStudio from './components/ImageEditorStudio.vue'
 import { initMaterials } from './stores/materials'
 import { busy, pendingJobs } from './stores/heroHistory'
 import { THEMES, savedTheme, setTheme } from './utils/theme'
@@ -18,6 +19,7 @@ const PAGES = [
   { key: 'collage', title: '单图拼接', component: CollageStudio, hash: '#/collage' },
   { key: 'pair', title: '批量拼接', component: PairStudio, hash: '#/pair' },
   { key: 'reflect', title: '倒影合成', component: ReflectionStudio, hash: '#/reflect' },
+  { key: 'editor', title: '图片编辑', component: ImageEditorStudio, hash: '#/editor' },
 ]
 
 // 按 key 取页面，避免以后插页导致下标错位

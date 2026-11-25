@@ -1,17 +1,13 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { handleFetch, handleImage } from './server/dianping.js'
-import { handleScrapling, isScraplingRoute } from './server/scraplingProxy.js'
-import { scraplingSidecar } from './server/scraplingSidecar.js'
 
 // 本地 dev / preview 的接口层与 Vercel Functions（api/ 目录）共用同一套实现：
 // /api/dp/*        —— 点评抓取代理（Node 原生 fetch + 手动 Cookie）
-// /api/scrapling/* —— 转发到本地 Python 边车（Scrapling 隐身抓取 / 实况图）
 function apiMiddleware() {
   const handler = async (req, res, next) => {
     const pathname = (req.url || '').split('?')[0]
     try {
-      if (isScraplingRoute(pathname)) return await handleScrapling(req, res)
       if (pathname === '/api/dp/fetch' && req.method === 'POST') return await handleFetch(req, res)
       if (pathname === '/api/dp/image' && req.method === 'GET') return await handleImage(req, res)
       if (pathname.startsWith('/api/')) {
@@ -67,7 +63,7 @@ process.on('uncaughtException', (err) => {
 })
 
 export default defineConfig({
-  plugins: [vue(), apiMiddleware(), scraplingSidecar()],
+  plugins: [vue(), apiMiddleware()],
   server: {
     port: 5173,
     host: true, // 监听 0.0.0.0，允许局域网内其它设备访问

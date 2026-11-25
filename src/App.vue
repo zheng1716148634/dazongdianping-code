@@ -3,7 +3,6 @@ import { computed, onMounted, ref } from 'vue'
 import { Brush, Check } from '@element-plus/icons-vue'
 import ReflectionStudio from './components/ReflectionStudio.vue'
 import LinkExtractor from './components/LinkExtractor.vue'
-import MaterialFetch from './components/MaterialFetch.vue'
 import CollageStudio from './components/CollageStudio.vue'
 import PairStudio from './components/PairStudio.vue'
 import HeroImageStudio from './components/HeroImageStudio.vue'
@@ -14,7 +13,6 @@ import { THEMES, savedTheme, setTheme } from './utils/theme'
 
 const PAGES = [
   { key: 'links', title: 'AI提取素材', component: LinkExtractor, hash: '#/links' },
-  { key: 'fetch', title: '素材获取', component: MaterialFetch, hash: '#/fetch' },
   { key: 'hero', title: '美食AI', component: HeroImageStudio, hash: '#/hero' },
   { key: 'collage', title: '单图拼接', component: CollageStudio, hash: '#/collage' },
   { key: 'pair', title: '批量拼接', component: PairStudio, hash: '#/pair' },
